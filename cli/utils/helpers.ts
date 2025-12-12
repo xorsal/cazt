@@ -22,18 +22,23 @@ export class Helpers {
    * Convert string to Fr field
    * - If it's a hex string (starts with 0x), validate it has even number of digits and parse as hex
    * - Otherwise, treat as UTF-8 string
+   *
+   * Uses fromBufferReduce to safely handle values that exceed the field modulus.
    */
   static stringToFr(value: string): Fr {
     // If it's a hex string (starts with 0x), validate it has even number of digits and parse as hex
     if (value.startsWith('0x')) {
       this.validateHexString(value);
-      return new Fr(BigInt(value));
+      // Use fromBufferReduce to safely handle values that might exceed field modulus
+      const hexPart = value.slice(2).padStart(64, '0'); // Pad to 32 bytes
+      const buffer = Buffer.from(hexPart, 'hex');
+      return Fr.fromBufferReduce(buffer);
     }
     // Otherwise, treat as UTF-8 string
     const buffer = Buffer.from(value, 'utf8');
     const padded = Buffer.alloc(32);
     buffer.copy(padded, 0, 0, Math.min(buffer.length, 32));
-    return Fr.fromBuffer(padded);
+    return Fr.fromBufferReduce(padded);
   }
 
   /**

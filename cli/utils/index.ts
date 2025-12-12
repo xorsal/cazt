@@ -10,6 +10,9 @@ import { ArtifactUtils } from './artifact.js';
 import { NoteUtils } from './note.js';
 import { DeploymentUtils } from './deployment.js';
 import { LogUtils } from './log.js';
+import { TxUtils } from './tx.js';
+import { WalletUtils } from './wallet.js';
+import { AccountUtils } from './account.js';
 
 /**
  * AztecUtilities - Main utility class that groups all utility functions
@@ -120,5 +123,32 @@ export class AztecUtilities {
 
   // Log utilities
   static decryptRawPrivateLog = LogUtils.decryptRawPrivateLog;
+
+  // Transaction utilities
+  static analyzeTx = TxUtils.analyzeTx;
+  static getTxHistory = TxUtils.getTxHistory;
+  static decodeCalldata = TxUtils.decodeCalldata;
+  static compareTx = TxUtils.compareTx;
+  static formatTxAnalysis = TxUtils.formatHumanReadable;
+  static formatTxComparison = TxUtils.formatComparisonHumanReadable;
+
+  // Wallet utilities
+  static generateKey = WalletUtils.generateKey;
+  static deriveKeys = WalletUtils.deriveKeys;
+  static deriveAddress = WalletUtils.deriveAddress;
+  static deriveAppKeys = WalletUtils.deriveAppKeys;
+  static signMessage = WalletUtils.signMessage;
+  static verifySignature = WalletUtils.verifySignature;
+  static formatDerivedKeys = WalletUtils.formatDerivedKeysHumanReadable;
+  static formatDerivedAddress = WalletUtils.formatDerivedAddressHumanReadable;
+
+  // Account utilities
+  static createAccount = AccountUtils.createAccount;
+  static deployAccount = AccountUtils.deployAccount;
+  static getAccountInfo = AccountUtils.getAccountInfo;
+  static computeAccountAddress = AccountUtils.computeAddress;
+  static formatAccountCreate = AccountUtils.formatAccountCreateHumanReadable;
+  static formatAccountInfo = AccountUtils.formatAccountInfoHumanReadable;
+  static formatAccountDeploy = AccountUtils.formatDeployHumanReadable;
 }
 

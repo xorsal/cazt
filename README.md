@@ -172,6 +172,17 @@ cazt --rpc-url testnet block number
 - **Contract queries**: `contract call`, `contract view`
 - **Node info**: `node version`, `node status`
 
+### Bridge Commands (L1↔L2 Messaging)
+
+- **Send L1→L2 message**: `bridge send-l1-to-l2` - Send message from L1 (Anvil) to L2 via Inbox contract
+- **List pending messages**: `bridge pending` - Query L1↔L2 messages from contract events
+- **Check message status**: `bridge status` - Check cross-chain message delivery status
+- **Message consumption guide**: `bridge consume-l1-to-l2` - Guidance on consuming L1→L2 messages in contracts
+- **Get L1→L2 witness**: `bridge l1-to-l2-witness` - Get membership witness for L1→L2 message
+- **Find message block**: `bridge l1-to-l2-block` - Find L2 block containing L1→L2 message
+- **Check sync status**: `bridge is-l1-to-l2-synced` - Check if L1→L2 messages are synced
+- **Get L2→L1 messages**: `bridge l2-to-l1` - Get L2→L1 messages from a block
+
 ### Output Format
 
 By default, utility commands output raw values (like `cast`):
@@ -484,6 +495,42 @@ cazt block number
 # Call a contract function (requires running node)
 cazt contract call --address <address> --function <selector> --args <args>
 ```
+
+### Bridge Commands (Cross-Chain Messaging)
+
+```bash
+# Send L1→L2 message (requires sandbox with Anvil)
+cazt --sandbox bridge send-l1-to-l2 \
+  --recipient 0x<l2_contract_address> \
+  --content 0x<content_hash_32_bytes> \
+  --secret-hash 0x<secret_hash_32_bytes>
+
+# List all pending cross-chain messages
+cazt --sandbox bridge pending
+
+# List only L1→L2 messages
+cazt --sandbox bridge pending --direction l1-to-l2
+
+# List only L2→L1 message roots
+cazt --sandbox bridge pending --direction l2-to-l1
+
+# Check specific message status
+cazt --sandbox bridge status 0x<message_hash>
+
+# Get guidance on consuming L1→L2 messages
+cazt bridge consume-l1-to-l2
+
+# Check if a specific message is available on L2
+cazt --sandbox bridge consume-l1-to-l2 --message-hash 0x<message_hash>
+
+# Get L2→L1 messages from a specific block
+cazt --sandbox bridge l2-to-l1 <block_number>
+
+# Check if L1→L2 messages are synced to a block
+cazt --sandbox bridge is-l1-to-l2-synced <block_number>
+```
+
+**Note**: Bridge commands that interact with L1 require `--sandbox` flag (for Anvil at localhost:8545) or `--l1-rpc-url` for other L1 endpoints.
 
 ## Artifact Sources
 
