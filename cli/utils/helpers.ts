@@ -20,20 +20,31 @@ export class Helpers {
 
   /**
    * Convert string to Fr field
-   * - If it's a hex string (starts with 0x), validate it has even number of digits and parse as hex
+   * - If it's a hex string (starts with 0x), parse as hex (auto-pads odd digits)
+   * - If it's all digits, parse as decimal number
    * - Otherwise, treat as UTF-8 string
    *
    * Uses fromBufferReduce to safely handle values that exceed the field modulus.
    */
   static stringToFr(value: string): Fr {
-    // If it's a hex string (starts with 0x), validate it has even number of digits and parse as hex
+    // If it's a hex string (starts with 0x), parse as hex
     if (value.startsWith('0x')) {
-      this.validateHexString(value);
-      // Use fromBufferReduce to safely handle values that might exceed field modulus
-      const hexPart = value.slice(2).padStart(64, '0'); // Pad to 32 bytes
+      // Pad to even length if odd number of hex digits
+      let hexPart = value.slice(2);
+      if (hexPart.length % 2 !== 0) {
+        hexPart = '0' + hexPart;
+      }
+      // Pad to 32 bytes for Fr
+      hexPart = hexPart.padStart(64, '0');
       const buffer = Buffer.from(hexPart, 'hex');
       return Fr.fromBufferReduce(buffer);
     }
+
+    // If it's all digits, treat as decimal number
+    if (/^\d+$/.test(value)) {
+      return new Fr(BigInt(value));
+    }
+
     // Otherwise, treat as UTF-8 string
     const buffer = Buffer.from(value, 'utf8');
     const padded = Buffer.alloc(32);
