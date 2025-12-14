@@ -37,11 +37,11 @@ describe('Contract Commands', () => {
       expect(stdout).toContain('function');
     });
 
-    it('should error because view requires PXE', () => {
+    it('should require --artifact option', () => {
       const { stdout, exitCode } = runCli(['contract', 'view', TEST_ADDRESS, 'get_balance']);
 
       expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('pxe');
+      expect(stdout.toLowerCase()).toContain('artifact');
     });
   });
 
@@ -55,11 +55,11 @@ describe('Contract Commands', () => {
       expect(stdout).toContain('function');
     });
 
-    it('should error because send requires PXE', () => {
+    it('should require --artifact option', () => {
       const { stdout, exitCode } = runCli(['contract', 'send', TEST_ADDRESS, 'transfer']);
 
       expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('pxe');
+      expect(stdout.toLowerCase()).toContain('artifact');
     });
   });
 
@@ -72,11 +72,11 @@ describe('Contract Commands', () => {
       expect(stdout).toContain('address');
     });
 
-    it('should error because simulate requires PXE', () => {
+    it('should require --artifact option', () => {
       const { stdout, exitCode } = runCli(['contract', 'simulate', TEST_ADDRESS, 'transfer']);
 
       expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('pxe');
+      expect(stdout.toLowerCase()).toContain('artifact');
     });
   });
 
@@ -299,11 +299,11 @@ describe('Contract Commands', () => {
       expect(stdout).toContain('artifact');
     });
 
-    it('should error because upload not implemented', () => {
+    it('should require API key for upload', () => {
       const { stdout, exitCode } = runCli(['contract', 'registry', 'upload', './artifact.json']);
 
       expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('not');
+      expect(stdout.toLowerCase()).toContain('api key');
     });
   });
 

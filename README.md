@@ -4,7 +4,7 @@
 
 [![GitHub](https://img.shields.io/badge/github-zkfrov%2Fcazt-blue)](https://github.com/zkfrov/cazt)
 
-**CAZT = cast + Aztec** is a command-line tool inspired by Foundry's `cast`, but specifically designed for the Aztec Network. It provides a comprehensive set of utilities for interacting with Aztec nodes, computing hashes, managing addresses, and working with Aztec-specific data structures.
+**CAZT = cast + Aztec** is a command-line tool inspired by Foundry's `cast`, but specifically designed for the Aztec Network. It provides a comprehensive set of utilities for interacting with Aztec nodes, managing keys and wallets, deploying contracts, and working with Aztec-specific data structures.
 
 ## Installation
 
@@ -57,20 +57,6 @@ npx cazt --help
 
 **Note**: The package needs to be published to npm first. Until then, use Method 1 or 2.
 
-### Building Aztec Standards Artifacts
-
-To use Aztec Standards contract artifacts, you need to build them first:
-
-```bash
-# Build aztec-standards artifacts (stored in .aztec-standards/)
-yarn build-aztec-standards [commit-or-tag]
-
-# Default builds from origin/dev
-yarn build-aztec-standards
-```
-
-This will clone the [aztec-standards repository](https://github.com/defi-wonderland/aztec-standards), build the contracts, and store the artifacts in `.aztec-standards/target/` (hidden folder).
-
 ### Troubleshooting
 
 If `cazt` command is not found after installation:
@@ -81,492 +67,417 @@ echo 'export PATH="$(npm bin -g):$PATH"' >> ~/.zshrc && source ~/.zshrc
 # (Use ~/.bashrc for bash)
 ```
 
-## Usage
-
-### Basic Commands
+## Quick Start
 
 ```bash
-# Get help
+# Get help (compact view)
 cazt --help
 
-# Utility commands (output raw values by default)
-cazt address-zero
-cazt keccak "hello world"
-cazt field-random
-cazt sha256 "test"
+# Get detailed help with all subcommands
+cazt --hhelp
 
-# Output as JSON
-cazt --json address-zero
+# Check node connectivity
+cazt node ready
 
-# RPC commands (require running Aztec node)
-cazt block number
-cazt tx get <tx-hash>
+# Generate a new secret key
+cazt key generate
+
+# Create a new wallet
+cazt wallet create
+
+# Hash some data
+cazt cast hash keccak "hello world"
+
+# Get current block number
+cazt query block number
 ```
 
-### Configuration
+## Command Structure
+
+CAZT uses a hierarchical command structure organized by domain:
+
+| Domain | Description |
+|--------|-------------|
+| `key` | Key management (generate, derive, sign, verify) |
+| `wallet` | Account/wallet operations (create, deploy, balance) |
+| `contract` | Contract interaction (view, send, deploy, registry) |
+| `query` | State queries (blocks, notes, nullifiers, storage) |
+| `tx` | Transaction operations (analyze, status, decode) |
+| `cast` | Utilities (hash, address, field, selector, abi) |
+| `node` | Node info and administration |
+| `bridge` | L1↔L2 cross-chain messaging |
+| `monitor` | Real-time monitoring and streaming |
+
+## Configuration
 
 Set environment variables or use flags:
 
 ```bash
 # Set default RPC URL
 export CAZT_RPC_URL=http://localhost:8080
-export CAZT_ADMIN_URL=http://localhost:8880
 
 # Or use flags
-cazt --rpc-url http://localhost:8080 block number
+cazt --rpc-url http://localhost:8080 query block number
 
-# Use network shortcuts (devnet, testnet)
-cazt --rpc-url devnet block number
-cazt --rpc-url testnet block number
+# Use network shortcuts
+cazt --devnet query block number     # https://api.aztec.network (default)
+cazt --testnet query block number    # testnet endpoint
+cazt --sandbox query block number    # localhost:8080
 ```
 
-**Network Shortcuts:**
-- `devnet` → `https://devnet.aztec-labs.com`
-- `testnet` → `https://aztec-testnet-fullnode.zkv.xyz`
+## Command Reference
 
-## Features
-
-### Utility Commands
-
-- **Aztec Address utilities**: `address-zero`, `address-random`, `address-validate`, `address-from-field`, `address-to-point`, etc.
-- **Ethereum Address utilities**: `eth-address-zero`, `eth-address-random`, `eth-address-validate`, `eth-address-from-field`, `eth-address-to-field`, `eth-address-is-zero`
-- **Address computation**: `compute-contract-address`, `compute-partial-address`, `compute-preaddress`, `compute-address-from-keys`, `compute-salted-initialization-hash`, `compute-initialization-hash`
-- **Hash functions**: `keccak`, `sha256`, `poseidon2`, `pedersen`, `secret-hash`, `hash-vk`, `var-args-hash`, `calldata-hash`, etc.
-- **Field operations**: `field-random`, `field-from-string`, `field-to-string`, `field-equals`, `field-is-zero`, `field-from-buffer`, `field-to-buffer`, etc.
-- **Selector utilities**: `sig`, `selector-from-signature`, `event-selector`, `note-selector`, `selector-from-field`, etc.
-- **ABI encoding/decoding**: `abi-encode`, `abi-decode`, `decode-function-signature`
-- **Contract artifacts**: `artifact-hash`, `artifact-hash-preimage`, `artifact-metadata-hash`, `function-artifact-hash`, `load-contract-artifact`, etc.
-- **Note & Nullifier utilities**: `silo-nullifier`, `silo-note-hash`, `unique-note-hash`, `note-hash-nonce`, `silo-private-log`
-- **Message utilities**: `l1-to-l2-message-nullifier`, `l2-to-l1-message-hash`
-- **Storage utilities**: `public-data-slot`, `note-slot`, `storage-layout`
-
-### Note Queries
-
-- **Fetch notes**: `notes fetch` - Fetch notes from a wallet for a given storage slot
-  - Automatically deserializes notes (replaces note buffer with array of field strings)
-  - Registers contract with wallet using provided artifact
-  - Creates accounts from secret keys and adds them to scopes
-  - Supports multiple accounts via multiple secret keys
-
-- **Compute note hash**: `notes compute-hash` - Compute note hash(es) from note items or existing hashes
-  - Can compute raw, siloed, and unique note hashes progressively
-  - Supports partial notes (2-step hashing for UintNote-like structures)
-  - Accepts comma-separated field values or JSON arrays
-
-- **Verify note**: `notes verify` - Verify if a note exists in a transaction
-  - Can use note hash directly or compute from note content
-  - Supports checking raw, siloed, or unique note hashes
-
-### Artifact Management
-
-- **List artifacts**: `artifacts aztec` - List all available Aztec contract artifacts from `@aztec/noir-contracts.js`
-- **List standards**: `artifacts standards` - List all available Aztec Standards contract artifacts from `.aztec-standards/target/`
-
-### RPC Commands
-
-- **Block queries**: `block number`, `block get`, `block header`
-- **Transaction queries**: `tx get`, `tx receipt`
-- **State queries**: `state storage`, `state note`
-- **Merkle tree queries**: `merkle root`, `merkle siblings`
-- **Logs**: `logs get`, `logs get-unencrypted`
-- **Contract queries**: `contract call`, `contract view`
-- **Node info**: `node version`, `node status`
-
-### Bridge Commands (L1↔L2 Messaging)
-
-- **Send L1→L2 message**: `bridge send-l1-to-l2` - Send message from L1 (Anvil) to L2 via Inbox contract
-- **List pending messages**: `bridge pending` - Query L1↔L2 messages from contract events
-- **Check message status**: `bridge status` - Check cross-chain message delivery status
-- **Message consumption guide**: `bridge consume-l1-to-l2` - Guidance on consuming L1→L2 messages in contracts
-- **Get L1→L2 witness**: `bridge l1-to-l2-witness` - Get membership witness for L1→L2 message
-- **Find message block**: `bridge l1-to-l2-block` - Find L2 block containing L1→L2 message
-- **Check sync status**: `bridge is-l1-to-l2-synced` - Check if L1→L2 messages are synced
-- **Get L2→L1 messages**: `bridge l2-to-l1` - Get L2→L1 messages from a block
-
-### Output Format
-
-By default, utility commands output raw values (like `cast`):
+### Key Management (`key`)
 
 ```bash
-$ cazt address-zero
+# Generate a new secret key
+cazt key generate
+
+# Derive all master keys from secret
+cazt key derive-keys <secret>
+
+# Compute address from secret (without deploying)
+cazt key derive-address <secret>
+
+# Sign a message with Schnorr
+cazt key sign <message> <secret>
+
+# Verify signature
+cazt key verify <message> --signature <sig> --public-key <pubkey>
+
+# Import/export/list stored keys
+cazt key import <secret> --alias mykey
+cazt key export mykey --confirm
+cazt key list
+
+# Encrypted keystore
+cazt key keystore create <secret> --password <pass> --output keystore.json
+cazt key keystore unlock keystore.json --password <pass>
+```
+
+### Wallet Operations (`wallet`)
+
+```bash
+# Create new account (generates key, computes address)
+cazt wallet create
+cazt wallet create --type schnorr   # default
+cazt wallet create --type ecdsa-k   # ECDSA (not yet implemented)
+
+# Compute address from existing secret
+cazt wallet address <secret>
+cazt wallet address <secret> --salt 0x42
+
+# Deploy account contract to network
+cazt wallet deploy <secret>
+cazt wallet deploy <secret> --wait
+
+# Get account info
+cazt wallet info <address>
+
+# List accounts (from PXE or local storage)
+cazt wallet list          # requires PXE
+cazt wallet list --local  # local keys only
+
+# Check token balance
+cazt wallet balance <address> --token <token-address>
+
+# Generate vanity address
+cazt wallet vanity abc --max-attempts 100000
+
+# Create authorization witness for delegation
+cazt wallet authwit create <messageHash> --secret <key>
+
+# Register account with PXE
+cazt wallet register <address> --secret <key>
+```
+
+### Contract Interaction (`contract`)
+
+```bash
+# Call view function (no state change)
+cazt contract view <address> <function> [args...] --artifact <path>
+
+# Send state-changing transaction
+cazt contract send <address> <function> [args...] --artifact <path> --secret <key>
+
+# Simulate transaction without sending
+cazt contract simulate <address> <function> [args...] --artifact <path> --secret <key>
+
+# Get contract info
+cazt contract info <address>
+cazt contract class <classId>
+
+# Read contract ABI
+cazt contract abi <artifact-path>
+
+# Read public storage
+cazt contract storage <address>           # show guidance
+cazt contract storage <address> <slot>    # specific slot
+
+# Query events and logs
+cazt contract events <address> --from 0 --to latest
+cazt contract logs <address>
+
+# Deploy contract
+cazt contract deploy <artifact> --args arg1,arg2 --secret <key>
+cazt contract deploy <artifact> --constructor init --salt 0x123
+
+# Artifact operations
+cazt contract artifact info <path>
+
+# Registry operations (devnet.aztec-registry.xyz)
+cazt contract registry list
+cazt contract registry get <classId> --output artifact.json
+cazt contract registry upload <artifact> --api-key <key>
+cazt contract registry search "token"
+```
+
+### State Queries (`query`)
+
+```bash
+# Block queries
+cazt query block number          # current block
+cazt query block proven-number   # latest proven
+cazt query block tips            # all tips
+cazt query block get <number>    # by number or hash
+cazt query block range 0 10      # range of blocks
+cazt query block header <id>     # header only
+
+# Public storage
+cazt query public <contract> <slot>
+
+# Notes (requires PXE)
+cazt query notes <ownerAddress> --contract <addr> --artifact <path> --secret <key>
+
+# Nullifiers
+cazt query nullifiers <hash>
+
+# Transaction
+cazt query tx <hash>
+
+# Logs
+cazt query logs <address> --type public
+```
+
+### Transaction Operations (`tx`)
+
+```bash
+# Analyze transaction (status, effects, logs, gas)
+cazt tx analyze <hash>
+cazt tx analyze <hash> --effects  # include state changes
+
+# Quick status check
+cazt tx status <hash>
+
+# Full receipt
+cazt tx receipt <hash>
+
+# Wait for mining
+cazt tx wait <hash> --timeout 60
+
+# Decode calldata
+cazt tx decode <calldata> --artifact <path>
+
+# Compare two transactions
+cazt tx compare <hash1> <hash2>
+
+# Simulate raw calldata
+cazt tx simulate <calldata> --from <address>
+```
+
+### Cast Utilities (`cast`)
+
+#### Hash Functions
+```bash
+cazt cast hash zero                    # zero hash
+cazt cast hash keccak "hello"          # Keccak-256
+cazt cast hash sha256 "hello"          # SHA-256
+cazt cast hash poseidon2 0x1,0x2,0x3   # Poseidon2
+cazt cast hash pedersen 0x1,0x2        # Pedersen
+cazt cast hash pedersen 0x1,0x2 --index 5
+cazt cast hash secret <secret>         # secret hash
+```
+
+#### Address Utilities
+```bash
+cazt cast address zero                 # zero address
+cazt cast address random               # random address
+cazt cast address validate <addr>      # validate format
+cazt cast address from-field <field>   # from field element
+cazt cast address to-point <addr>      # to Grumpkin point
+```
+
+#### Ethereum Address Utilities
+```bash
+cazt cast eth zero                     # zero ETH address
+cazt cast eth random                   # random ETH address
+cazt cast eth validate <addr>          # validate format
+cazt cast eth is-zero <addr>           # check if zero
+cazt cast eth to-field <addr>          # convert to field
+```
+
+#### Field Utilities
+```bash
+cazt cast field random                 # random field
+cazt cast field from-string "0x123"    # from hex string
+cazt cast field is-zero <field>        # check if zero
+cazt cast field equals <a> <b>         # compare fields
+```
+
+#### Selector Utilities
+```bash
+cazt cast selector compute "transfer(address,uint256)"  # function selector
+cazt cast selector event "Transfer(address,address)"    # event selector
+cazt cast selector empty                                # empty selector
+```
+
+#### ABI Encoding
+```bash
+cazt cast abi encode <type> <value>
+cazt cast abi decode <type> <data>
+```
+
+#### Nullifier & Note Utilities
+```bash
+cazt cast nullifier silo --contract <addr> --nullifier <value>
+cazt cast note silo-hash --contract <addr> --note-hash <hash>
+cazt cast note unique-hash --siloed-hash <hash> --nonce <nonce>
+```
+
+#### Artifact Utilities
+```bash
+cazt cast artifact hash <artifact>                    # compute artifact hash
+cazt cast artifact hash-preimage <artifact>           # get hash preimage
+cazt cast artifact metadata-hash <artifact>           # compute metadata hash
+cazt cast artifact function-hash <artifact> <fn>      # function artifact hash
+```
+
+#### Other Utilities
+```bash
+cazt cast calldata-hash <calldata>        # hash public calldata
+cazt cast var-args-hash 0x1,0x2,0x3       # hash for authwit
+cazt cast public-data-slot                # public data tree slot
+cazt cast hash-vk <fields>                # hash verification key
+```
+
+### Node Commands (`node`)
+
+```bash
+cazt node ready              # check if node is ready
+cazt node info               # node information
+cazt node version            # node version
+cazt node chain-id           # chain ID
+cazt node l1-addresses       # L1 contract addresses
+cazt node protocol-addresses # protocol addresses
+cazt node enr                # node ENR
+cazt node base-fees          # current base fees
+cazt node sync-status        # sync status
+```
+
+### Bridge Commands (`bridge`)
+
+```bash
+# Send L1→L2 message (requires sandbox or L1 RPC)
+cazt --sandbox bridge send-l1-to-l2 \
+  --recipient <l2-address> \
+  --content <hash> \
+  --secret-hash <hash>
+
+# List pending cross-chain messages
+cazt --sandbox bridge pending
+cazt --sandbox bridge pending --direction l1-to-l2
+cazt --sandbox bridge pending --direction l2-to-l1
+
+# Check message status
+cazt bridge status <messageHash>
+
+# Get L1→L2 message witness
+cazt bridge l1-to-l2-witness <messageHash>
+
+# Find block containing message
+cazt bridge l1-to-l2-block <messageHash>
+
+# Check sync status
+cazt bridge is-l1-to-l2-synced <blockNumber>
+
+# Get L2→L1 messages from block
+cazt bridge l2-to-l1 <blockNumber>
+
+# Guidance on consuming messages
+cazt bridge consume-l1-to-l2
+cazt --sandbox bridge consume-l1-to-l2 --message-hash <hash>
+```
+
+**Note**: Bridge commands that interact with L1 require `--sandbox` flag (for Anvil at localhost:8545) or `--l1-rpc-url` for other L1 endpoints.
+
+### Monitor Commands (`monitor`)
+
+```bash
+# Stream new blocks
+cazt monitor blocks --interval 1000
+
+# Watch note creation (requires PXE)
+cazt monitor notes <contract> --artifact <path> --secret <key>
+
+# Watch address activity
+cazt monitor address <address>
+
+# Watch L1↔L2 messages
+cazt --sandbox monitor messages
+cazt --sandbox monitor messages --direction l1-to-l2
+
+# Watch contract events
+cazt monitor events <contract> --artifact <path>
+
+# Stream public logs
+cazt monitor logs --contract <address>
+
+# Watch pending transactions
+cazt monitor pending --from <address>
+
+# Watch nullifier insertions (not yet implemented)
+cazt monitor nullifiers
+```
+
+## Output Format
+
+By default, utility commands output raw values:
+
+```bash
+$ cazt cast address zero
 0x0000000000000000000000000000000000000000000000000000000000000000
 
-$ cazt keccak "hello"
-0x47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad
+$ cazt cast hash keccak "hello"
+0x1c8aff950685c2ed4bc3174f3472287b56d9517b9c948127319a09a7a36deac8
 ```
 
 Use `--json` flag for JSON output:
 
 ```bash
-$ cazt --json address-zero
+$ cazt --json cast address zero
 {
-  "value": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  "address": "0x0000000000000000000000000000000000000000000000000000000000000000"
+}
+
+$ cazt --json key generate
+{
+  "secretKey": "0x..."
 }
 ```
-
-RPC commands always output JSON (pretty-printed by default, use `--no-pretty` for compact).
-
-## Examples
-
-### Basic Utilities
-
-```bash
-# Generate a random field element
-cazt field-random
-
-# Compute Keccak hash
-cazt keccak "hello world"
-
-# Compute function selector
-cazt sig "transfer(address,uint256)"
-
-# Validate an Aztec address
-cazt address-validate "0x0000000000000000000000000000000000000000000000000000000000000000"
-
-# Validate an Ethereum address
-cazt eth-address-validate "0x0000000000000000000000000000000000000000"
-
-# Get zero addresses
-cazt address-zero
-cazt eth-address-zero
-
-# Compute Poseidon2 hash (supports comma-separated or JSON array)
-cazt poseidon2 0x1,0x2,0x3
-cazt poseidon2 '["0x1","0x2","0x3"]'
-
-# Compute Pedersen hash
-cazt pedersen 0x1,0x2,0x3
-cazt pedersen 0x1,0x2,0x3 --index 5
-
-# Silo a nullifier
-cazt silo-nullifier --contract <address> --nullifier <value>
-```
-
-### Note Queries
-
-```bash
-# Fetch notes using artifact name (from aztec or standards)
-cazt notes fetch \
-  --contract 0x08ded8acfa50e8d138c782f84f835133c1ca4803040bf6dc2bfd028294321373 \
-  --artifact standards:Token \
-  --storage-slot-name private_balances \
-  --storage-slot-key 0x18db9a39c0c2475c662aa7babc1dedec40b5a7cb1779fc96e763364f2328c12d \
-  --sender 0x11deabd59b872d17c737b66f61d332230f341e774c6b5d3762f46a74536f947f \
-  --secret-key 0x0aebd1b4be76efa44f5ee655c20bf9ea60f7ae44b9a7fd1fd9f189c7a0b0cdae
-
-# Fetch notes using direct storage slot
-cazt notes fetch \
-  --contract <address> \
-  --artifact path/to/artifact.json \
-  --storage-slot 7 \
-  --sender <sender-address> \
-  --secret-key <secret-key>
-
-# Fetch notes with multiple accounts (comma-separated or multiple flags)
-cazt notes fetch \
-  --contract <address> \
-  --artifact aztec:Token \
-  --storage-slot-name balances \
-  --storage-slot-key <user-address> \
-  --secret-keys <key1>,<key2> \
-  --salts <salt1>,<salt2>
-
-# Or use multiple flags
-cazt notes fetch \
-  --contract <address> \
-  --artifact aztec:Token \
-  --storage-slot-name balances \
-  --storage-slot-key <user-address> \
-  --secret-key <key1> --secret-key <key2> \
-  --salt <salt1> --salt <salt2>
-
-# Fetch notes with additional filters
-cazt notes fetch \
-  --contract <address> \
-  --artifact standards:Token \
-  --storage-slot-name private_balances \
-  --storage-slot-key <user-address> \
-  --sender <sender-address> \
-  --secret-key <secret-key> \
-  --status ACTIVE \
-  --siloed-nullifier <nullifier> \
-  --scopes <address1>,<address2>
-
-# Fetch notes with debug logging (shows PXE INFO logs)
-cazt notes fetch \
-  --contract <address> \
-  --artifact standards:Token \
-  --storage-slot-name private_balances \
-  --storage-slot-key <user-address> \
-  --sender <sender-address> \
-  --secret-key <secret-key> \
-  --debug
-
-# Register contract with secret key for note decryption
-cazt notes fetch \
-  --contract <address> \
-  --artifact standards:Token \
-  --contract-secret-key <contract-secret-key> \
-  --storage-slot-name private_balances \
-  --storage-slot-key <user-address> \
-  --sender <sender-address> \
-  --secret-key <secret-key>
-```
-
-### Note Hash Computation
-
-```bash
-# Compute raw note hash from note items and storage slot
-cazt notes compute-hash \
-  --note-items 0x1,0x2,0x3 \
-  --storage-slot 0x098022aaadde6cfc46ad7213b08210ebd64f1b11aeb7acb28015386a6e6bdd1a
-
-# Compute raw, siloed, and unique note hashes progressively
-cazt notes compute-hash \
-  --note-items 0x1,0x2,0x3 \
-  --storage-slot 0x098022aaadde6cfc46ad7213b08210ebd64f1b11aeb7acb28015386a6e6bdd1a \
-  --contract 0x18b953ef8d49994a0d1eb715ffe1dee4ba44a59d9f6c3bd8f08cc4d837533e0b \
-  --note-nonce 0x1234
-
-# Compute from existing raw note hash
-cazt notes compute-hash \
-  --raw-note-hash 0x1234... \
-  --contract 0x18b953ef8d49994a0d1eb715ffe1dee4ba44a59d9f6c3bd8f08cc4d837533e0b \
-  --note-nonce 0x5678
-
-# Compute partial note hash (2-step hashing for UintNote)
-cazt notes compute-hash \
-  --note-items 0xowner,0xrandomness,0xvalue \
-  --storage-slot 0x098022aaadde6cfc46ad7213b08210ebd64f1b11aeb7acb28015386a6e6bdd1a \
-  --partial
-
-# Use JSON array format
-cazt notes compute-hash \
-  --note-items '["0x1","0x2","0x3"]' \
-  --storage-slot 0x098022aaadde6cfc46ad7213b08210ebd64f1b11aeb7acb28015386a6e6bdd1a
-```
-
-**Note Hash Computation Options:**
-- `--note-items <items>` (required if not using `--raw-note-hash` or `--siloed-note-hash`): Comma-separated field values (e.g., `"0x1,0x2,0x3"`), JSON array, or `@file.json`
-- `--storage-slot <slot>` (required if computing from items): Storage slot (Fr)
-- `--raw-note-hash <hash>` (optional): Use existing raw note hash (skip computing from items)
-- `--siloed-note-hash <hash>` (optional): Use existing siloed note hash (requires `--contract`)
-- `--contract <address>` (optional): Contract address (required for siloed/unique hash computation)
-- `--note-nonce <nonce>` (optional): Note nonce (required for unique hash computation)
-- `--partial` (optional): Use partial note hashing (2-step: commitment from private fields + storage slot, then final hash from commitment + value)
-
-**Note Hash Computation Output:**
-Returns JSON with computed hashes:
-```json
-{
-  "rawNoteHash": "0x...",
-  "siloedNoteHash": "0x...",
-  "uniqueNoteHash": "0x..."
-}
-```
-
-### Note Verification
-
-```bash
-# Verify note using note hash directly
-cazt notes verify \
-  --tx-hash 0x1234... \
-  --note-hash 0x5678...
-
-# Verify note with contract (for siloed hash check)
-cazt notes verify \
-  --tx-hash 0x1234... \
-  --note-hash 0x5678... \
-  --contract 0x18b953ef8d49994a0d1eb715ffe1dee4ba44a59d9f6c3bd8f08cc4d837533e0b
-
-# Verify note by computing hash from content
-cazt notes verify \
-  --tx-hash 0x1234... \
-  --contract 0x18b953ef8d49994a0d1eb715ffe1dee4ba44a59d9f6c3bd8f08cc4d837533e0b \
-  --artifact standards:Token \
-  --note-content '{"value": 1000, "owner": "0x..."}' \
-  --storage-slot 0x098022aaadde6cfc46ad7213b08210ebd64f1b11aeb7acb28015386a6e6bdd1a
-
-# Verify unique note hash
-cazt notes verify \
-  --tx-hash 0x1234... \
-  --note-hash 0x5678... \
-  --contract 0x18b953ef8d49994a0d1eb715ffe1dee4ba44a59d9f6c3bd8f08cc4d837533e0b \
-  --first-nullifier 0xabcd... \
-  --note-index 0
-
-# Use network shortcuts for node URL
-cazt notes verify \
-  --tx-hash 0x1234... \
-  --note-hash 0x5678... \
-  --node-url devnet
-```
-
-**Note Verification Options:**
-- `--tx-hash <hash>` (required): Transaction hash
-- `--note-hash <hash>` (optional): Base note hash (use this or provide note content to compute)
-- `--contract <address>` (optional): Contract address (required if computing hash from content, or if siloing hash)
-- `--artifact <json>` (optional): Contract artifact (required if computing hash from content)
-- `--note-content <json>` (optional): Note content as JSON object or `@file.json` (required if computing hash from content)
-- `--storage-slot <slot>` (optional): Storage slot (required if computing hash from content)
-- `--node-url <url>` (optional): Node URL (or `devnet`/`testnet` for network shortcuts)
-- `--note-type-name <name>` (optional): Note type name from artifact (for disambiguation)
-- `--first-nullifier <nullifier>` (optional): First nullifier from transaction (for unique hash computation)
-- `--note-index <index>` (optional): Note index in transaction (for unique hash computation)
-
-**Note Verification Output:**
-Returns JSON with verification result:
-```json
-{
-  "exists": true,
-  "noteHash": "0x...",
-  "siloedNoteHash": "0x...",
-  "uniqueNoteHash": "0x...",
-  "txHash": "0x...",
-  "noteHashes": ["0x...", "0x..."],
-  "firstNullifier": "0x..."
-}
-```
-
-**Note Fetch Options:**
-- `--contract <address>` (required): Contract address
-- `--artifact <path|name>` (required): Artifact file path, artifact name (e.g., `aztec:Token`, `standards:Token`), or JSON string
-- `--contract-secret-key <key>` (optional): Secret key for contract registration (needed for note decryption)
-- `--sender <address>` (optional): Sender address to register with wallet and use for scopes filtering
-- `--storage-slot <slot>` (optional): Direct storage slot (Fr) - number or field value
-- `--storage-slot-name <name>` (optional): Storage slot name from artifact (e.g., "balances", "private_balances")
-- `--storage-slot-key <key>` (optional): Key for deriving slot in map (required if using `--storage-slot-name` for map slots)
-- `--secret-key <key>` (optional): Secret key for account creation (can be provided multiple times)
-- `--secret-keys <keys>` (optional): Comma-separated list of secret keys (alternative to multiple `--secret-key`)
-- `--salt <salt>` (optional): Salt for account creation (defaults to 0 if not provided, can be provided multiple times)
-- `--salts <salts>` (optional): Comma-separated list of salts (alternative to multiple `--salt`)
-- `--status <status>` (optional): Note status filter - `ACTIVE`, `CANCELLED`, or `SETTLED` (default: `ACTIVE`)
-- `--siloed-nullifier <nullifier>` (optional): Filter by siloed nullifier
-- `--scopes <addresses>` (optional): Comma-separated list of scope addresses (account addresses are automatically added)
-- `--node-url <url>` (optional): Node URL (default: `http://localhost:8080` or `CAZT_RPC_URL` env var)
-- `--debug` (optional): Enable debug logging (shows PXE INFO logs, otherwise suppressed)
-
-**Note Fetch Output:**
-Returns JSON with a `notes` array. Each note contains:
-- `note`: Array of deserialized field strings (replaces the raw note buffer)
-- `recipient`: Recipient address
-- `contractAddress`: Contract address
-- `storageSlot`: Storage slot
-- `txHash`: Transaction hash
-- `noteNonce`: Note nonce
-
-### Artifact Management
-
-```bash
-# List all available Aztec contract artifacts
-cazt artifacts aztec
-
-# List with full details
-cazt artifacts aztec --full
-
-# List all available Aztec Standards contract artifacts
-cazt artifacts standards
-
-# List with full details
-cazt artifacts standards --full
-```
-
-### Storage Utilities
-
-```bash
-# Derive storage slot in a map
-cazt note-slot \
-  --base-slot 0x1234... \
-  --key 0x18db9a39c0c2475c662aa7babc1dedec40b5a7cb1779fc96e763364f2328c12d
-
-# Get storage layout from artifact
-cazt storage-layout --artifact path/to/artifact.json
-# or using artifact name
-cazt storage-layout --artifact aztec:Token
-cazt storage-layout --artifact standards:Escrow
-```
-
-### RPC Commands
-
-```bash
-# Get block number (requires running node)
-cazt block number
-
-# Call a contract function (requires running node)
-cazt contract call --address <address> --function <selector> --args <args>
-```
-
-### Bridge Commands (Cross-Chain Messaging)
-
-```bash
-# Send L1→L2 message (requires sandbox with Anvil)
-cazt --sandbox bridge send-l1-to-l2 \
-  --recipient 0x<l2_contract_address> \
-  --content 0x<content_hash_32_bytes> \
-  --secret-hash 0x<secret_hash_32_bytes>
-
-# List all pending cross-chain messages
-cazt --sandbox bridge pending
-
-# List only L1→L2 messages
-cazt --sandbox bridge pending --direction l1-to-l2
-
-# List only L2→L1 message roots
-cazt --sandbox bridge pending --direction l2-to-l1
-
-# Check specific message status
-cazt --sandbox bridge status 0x<message_hash>
-
-# Get guidance on consuming L1→L2 messages
-cazt bridge consume-l1-to-l2
-
-# Check if a specific message is available on L2
-cazt --sandbox bridge consume-l1-to-l2 --message-hash 0x<message_hash>
-
-# Get L2→L1 messages from a specific block
-cazt --sandbox bridge l2-to-l1 <block_number>
-
-# Check if L1→L2 messages are synced to a block
-cazt --sandbox bridge is-l1-to-l2-synced <block_number>
-```
-
-**Note**: Bridge commands that interact with L1 require `--sandbox` flag (for Anvil at localhost:8545) or `--l1-rpc-url` for other L1 endpoints.
 
 ## Artifact Sources
 
 CAZT supports multiple artifact sources:
 
-1. **Aztec artifacts** (`aztec:ContractName`): Built-in artifacts from `@aztec/noir-contracts.js`
+1. **File paths**: Direct paths to JSON artifact files
+   - Example: `./target/my_contract.json`
+
+2. **Aztec artifacts** (`aztec:ContractName`): Built-in artifacts from `@aztec/noir-contracts.js`
    - Example: `aztec:Token`, `aztec:Escrow`
 
-2. **Standards artifacts** (`standards:ContractName`): Artifacts from Aztec Standards (requires building first)
-   - Example: `standards:Token`, `standards:Escrow`
+3. **Standards artifacts** (`standards:ContractName`): Artifacts from Aztec Standards
+   - Example: `standards:Token`
    - Build with: `yarn build-aztec-standards`
-
-3. **File paths**: Direct paths to JSON artifact files
-   - Example: `path/to/artifact.json` or `@artifact.json`
-
-4. **JSON strings**: Inline JSON artifact data
-
-## Notes Fetch Details
-
-The `notes fetch` command:
-
-1. **Connects to Aztec Node**: Creates a connection to the specified node (default: `http://localhost:8080`)
-2. **Creates Wallet**: Sets up a TestWallet with PXE
-3. **Registers Contract**: Registers the contract with the wallet using the provided artifact (and optional contract secret key for decryption)
-4. **Registers Sender**: If `--sender` is provided, registers the sender address with the wallet
-5. **Creates Accounts**: Creates account managers from provided secret keys (salt defaults to 0 if not provided)
-6. **Determines Scopes**: Combines provided scopes with all account manager addresses
-7. **Fetches Notes**: Retrieves notes matching the filter criteria
-8. **Deserializes Notes**: Automatically deserializes note buffers into arrays of field strings
-
-**Important Notes:**
-- Salt defaults to `Fr.ZERO` (0) if not provided
-- Multiple secret keys create multiple account managers, all added to scopes
-- The contract must be registered before fetching notes (done automatically)
-- Notes are automatically deserialized - the raw note buffer is replaced with an array of field strings
-- PXE INFO logs are suppressed by default (use `--debug` to see them)
 
 ## Development
 
@@ -574,33 +485,17 @@ The `notes fetch` command:
 # Install dependencies
 yarn install
 
-# Build (compiles TypeScript to dist/)
+# Build
 yarn build
 
-# Run in development mode (no build needed, uses tsx)
+# Run in development mode
 yarn start --help
-yarn start address-zero
-
-# Or run directly with tsx
-npx tsx cli/cli.ts --help
-
-# Clean build artifacts
-yarn clean
-
-# Make cazt globally available (builds and installs)
-yarn install-global
-
-# Or use yarn link for development (creates symlink, faster)
-yarn link
-# Then use: cazt --help (from anywhere)
-
-# Build aztec-standards artifacts
-yarn build-aztec-standards
 
 # Run tests
 yarn test
-# or
-npx tsx cli/test.ts
+
+# Clean build artifacts
+yarn clean
 ```
 
 ### Project Structure
@@ -608,18 +503,19 @@ npx tsx cli/test.ts
 ```
 cazt/
 ├── bin/
-│   └── cazt              # Wrapper script (executes dist/cli.js)
-├── cli/                  # TypeScript source files
+│   └── cazt              # Wrapper script
+├── cli/
 │   ├── cli.ts           # Main CLI entry point
-│   ├── index.ts         # Library exports
-│   ├── test.ts          # Test suite
+│   ├── commands/        # Command implementations
+│   │   └── index.ts     # Command registration
 │   └── utils/           # Utility modules
-├── dist/                # Compiled JavaScript (generated)
-├── .aztec-standards/    # Aztec Standards artifacts (hidden, generated)
-│   ├── artifacts/       # TypeScript artifact files
-│   └── target/          # JSON artifact files
-├── scripts/             # Build scripts
-│   └── build-aztec-standards.ts
+│       ├── pxe.ts       # PXE helpers
+│       ├── tx.ts        # Transaction utilities
+│       ├── l1.ts        # L1 bridge utilities
+│       ├── note.ts      # Note utilities
+│       └── ...
+├── tests/               # Test suites
+├── dist/                # Compiled JavaScript
 └── package.json
 ```
 

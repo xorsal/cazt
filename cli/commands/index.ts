@@ -1044,28 +1044,42 @@ function registerWalletCommands(program: Command): void {
   authwitCmd
     .command('create')
     .description('Create authwit for delegation')
-    .argument('<intent>', 'Intent JSON or @file with: caller, action (contract, selector, args)')
+    .argument('<messageHash>', 'Message hash (Fr) to sign')
     .requiredOption('--secret <secret>', 'Secret key to sign with')
-    .action(async function(this: Command, intent: string, options: { secret: string }) {
-      // AuthWit creation is complex and requires full SDK integration
-      // For now, direct users to use the SDK
-      console.error('Error: "wallet authwit create" is not yet fully implemented.');
-      console.error('');
-      console.error('Creating authorization witnesses requires full SDK integration.');
-      console.error('');
-      console.error('Example intent format:');
-      console.error('  {');
-      console.error('    "caller": "0x...",');
-      console.error('    "action": {');
-      console.error('      "contract": "0x...",');
-      console.error('      "selector": "0x...",');
-      console.error('      "args": ["0x..."]');
-      console.error('    }');
-      console.error('  }');
-      console.error('');
-      console.error('For now, use the Aztec.js SDK directly:');
-      console.error('  import { AuthWitness } from "@aztec/aztec.js/authorization";');
-      process.exit(1);
+    .action(async function(this: Command, messageHash: string, options: { secret: string }) {
+      const globalOpts = getGlobalOpts(this);
+      try {
+        const { createPersistentPXE, getOrCreateAccount } = await import('../utils/pxe.js');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+
+        // Create PXE context and account
+        const pxeContext = await createPersistentPXE(nodeUrl);
+        const accountManager = await getOrCreateAccount(pxeContext, options.secret);
+        const wallet = pxeContext.wallet;
+
+        // Parse message hash as Fr
+        const messageHashFr = Fr.fromString(messageHash);
+
+        // Create the auth witness
+        const authWit = await wallet.createAuthWit(accountManager.address, messageHashFr);
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify({
+            witness: authWit.toString(),
+            messageHash: messageHashFr.toString(),
+            signer: accountManager.address.toString(),
+          }, null, 2));
+        } else {
+          console.log('Authorization Witness Created');
+          console.log(`  Witness:  ${authWit.toString()}`);
+          console.log(`  Message:  ${messageHashFr.toString()}`);
+          console.log(`  Signer:   ${accountManager.address.toString()}`);
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 }
 
@@ -1083,12 +1097,80 @@ function registerContractCommands(program: Command): void {
     .argument('<function>', 'Function name')
     .argument('[args...]', 'Function arguments')
     .option('--artifact <path>', 'Contract artifact for ABI')
-    .action(async function(this: Command, address: string, fn: string, args: string[], options: { artifact?: string }) {
+    .option('--secret <key>', 'Secret key for account')
+    .action(async function(this: Command, address: string, fn: string, args: string[], options: { artifact?: string; secret?: string }) {
       const globalOpts = getGlobalOpts(this);
-      // View functions require PXE or simulation - not available via basic node RPC
-      console.error('Error: Contract view calls require PXE connection (not yet implemented).');
-      console.error('Hint: Use query public <contract> <slot> to read public storage directly.');
-      process.exit(1);
+      try {
+        const { createPersistentPXE, getOrCreateAccount } = await import('../utils/pxe.js');
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const { Contract } = await import('@aztec/aztec.js/contracts');
+        const { AztecAddress } = await import('@aztec/aztec.js/addresses');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+        const contractAddress = AztecAddress.fromString(address);
+
+        // Load artifact
+        if (!options.artifact) {
+          console.error('Error: --artifact is required for contract calls');
+          process.exit(1);
+        }
+        const artifactPath = ArtifactUtils.resolveArtifact(options.artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const artifact = AbiUtils.loadContractArtifact(content);
+
+        // Create PXE context
+        const pxeContext = await createPersistentPXE(nodeUrl);
+
+        // Get or create account
+        const secretKey = options.secret || '0x0000000000000000000000000000000000000000000000000000000000000001';
+        const accountManager = await getOrCreateAccount(pxeContext, secretKey);
+        const wallet = pxeContext.wallet;
+
+        // Register the contract
+        await wallet.registerContract({ artifact, instance: { address: contractAddress } as any });
+
+        // Get the contract interface
+        const contract = await Contract.at(contractAddress, artifact, wallet);
+
+        // Find the function
+        const fnAbi = artifact.functions.find((f: any) => f.name === fn);
+        if (!fnAbi) {
+          console.error(`Error: Function '${fn}' not found in artifact`);
+          console.error('Available functions: ' + artifact.functions.map((f: any) => f.name).join(', '));
+          process.exit(1);
+        }
+
+        // Parse arguments
+        const parsedArgs = args.map((arg, i) => {
+          // Simple argument parsing - treat as hex/number/string
+          if (arg.startsWith('0x')) {
+            // Could be address or field
+            if (arg.length === 66) {
+              return Fr.fromString(arg);
+            } else if (arg.length === 42) {
+              return AztecAddress.fromString(arg);
+            }
+            return arg;
+          }
+          if (/^\d+$/.test(arg)) {
+            return BigInt(arg);
+          }
+          return arg;
+        });
+
+        // Call the view function
+        const result = await contract.methods[fn](...parsedArgs).simulate({ from: accountManager.address });
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify({ result: result?.toString?.() ?? result }, null, 2));
+        } else {
+          console.log('Result:', result?.toString?.() ?? result);
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   contractCmd
@@ -1098,14 +1180,100 @@ function registerContractCommands(program: Command): void {
     .argument('<function>', 'Function name')
     .argument('[args...]', 'Function arguments')
     .option('--artifact <path>', 'Contract artifact for ABI')
-    .option('--from <address>', 'Sender address')
-    .option('--fee <amount>', 'Max fee')
-    .action(async function(this: Command, address: string, fn: string, args: string[], options: { artifact?: string; from?: string; fee?: string }) {
+    .option('--secret <key>', 'Secret key for account')
+    .option('--wait', 'Wait for transaction to be mined', true)
+    .action(async function(this: Command, address: string, fn: string, args: string[], options: { artifact?: string; secret?: string; wait?: boolean }) {
       const globalOpts = getGlobalOpts(this);
-      // Sending transactions requires wallet/PXE integration
-      console.error('Error: Contract transactions require PXE connection (not yet implemented).');
-      console.error('Hint: Use the aztec CLI for full transaction support.');
-      process.exit(1);
+      try {
+        const { createPersistentPXE, getOrCreateAccount } = await import('../utils/pxe.js');
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const { Contract } = await import('@aztec/aztec.js/contracts');
+        const { AztecAddress } = await import('@aztec/aztec.js/addresses');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+        const contractAddress = AztecAddress.fromString(address);
+
+        // Load artifact
+        if (!options.artifact) {
+          console.error('Error: --artifact is required for contract calls');
+          process.exit(1);
+        }
+        const artifactPath = ArtifactUtils.resolveArtifact(options.artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const artifact = AbiUtils.loadContractArtifact(content);
+
+        // Create PXE context
+        const pxeContext = await createPersistentPXE(nodeUrl);
+
+        // Get or create account
+        const secretKey = options.secret || '0x0000000000000000000000000000000000000000000000000000000000000001';
+        const accountManager = await getOrCreateAccount(pxeContext, secretKey);
+        const wallet = pxeContext.wallet;
+
+        // Register the contract
+        await wallet.registerContract({ artifact, instance: { address: contractAddress } as any });
+
+        // Get the contract interface
+        const contract = await Contract.at(contractAddress, artifact, wallet);
+
+        // Find the function
+        const fnAbi = artifact.functions.find((f: any) => f.name === fn);
+        if (!fnAbi) {
+          console.error(`Error: Function '${fn}' not found in artifact`);
+          console.error('Available functions: ' + artifact.functions.map((f: any) => f.name).join(', '));
+          process.exit(1);
+        }
+
+        // Parse arguments
+        const parsedArgs = args.map((arg, i) => {
+          if (arg.startsWith('0x')) {
+            if (arg.length === 66) {
+              return Fr.fromString(arg);
+            } else if (arg.length === 42) {
+              return AztecAddress.fromString(arg);
+            }
+            return arg;
+          }
+          if (/^\d+$/.test(arg)) {
+            return BigInt(arg);
+          }
+          return arg;
+        });
+
+        // Send the transaction with sponsored fee
+        console.log(`Sending transaction: ${fn}(${args.join(', ')})`);
+        const txRequest = contract.methods[fn](...parsedArgs);
+        const sentTx = txRequest.send({ from: accountManager.address, fee: { paymentMethod: pxeContext.paymentMethod } });
+
+        if (options.wait !== false) {
+          console.log('Waiting for transaction...');
+          const receipt = await sentTx.wait();
+
+          if (globalOpts.json) {
+            console.log(JSON.stringify({
+              txHash: receipt.txHash.toString(),
+              blockNumber: receipt.blockNumber,
+              status: receipt.status,
+            }, null, 2));
+          } else {
+            console.log(`Transaction mined!`);
+            console.log(`  Hash: ${receipt.txHash.toString()}`);
+            console.log(`  Block: ${receipt.blockNumber}`);
+            console.log(`  Status: ${receipt.status}`);
+          }
+        } else {
+          const txHash = await sentTx.getTxHash();
+          if (globalOpts.json) {
+            console.log(JSON.stringify({ txHash: txHash.toString() }));
+          } else {
+            console.log(`Transaction submitted: ${txHash.toString()}`);
+          }
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   contractCmd
@@ -1115,11 +1283,83 @@ function registerContractCommands(program: Command): void {
     .argument('<function>', 'Function name')
     .argument('[args...]', 'Function arguments')
     .option('--artifact <path>', 'Contract artifact for ABI')
-    .option('--from <address>', 'Sender address')
-    .action(async function(this: Command, address: string, fn: string, args: string[], options: { artifact?: string; from?: string }) {
+    .option('--secret <key>', 'Secret key for account')
+    .action(async function(this: Command, address: string, fn: string, args: string[], options: { artifact?: string; secret?: string }) {
       const globalOpts = getGlobalOpts(this);
-      console.error('Error: Contract simulation requires PXE connection (not yet implemented).');
-      process.exit(1);
+      try {
+        const { createPersistentPXE, getOrCreateAccount } = await import('../utils/pxe.js');
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const { Contract } = await import('@aztec/aztec.js/contracts');
+        const { AztecAddress } = await import('@aztec/aztec.js/addresses');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+        const contractAddress = AztecAddress.fromString(address);
+
+        // Load artifact
+        if (!options.artifact) {
+          console.error('Error: --artifact is required for contract calls');
+          process.exit(1);
+        }
+        const artifactPath = ArtifactUtils.resolveArtifact(options.artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const artifact = AbiUtils.loadContractArtifact(content);
+
+        // Create PXE context
+        const pxeContext = await createPersistentPXE(nodeUrl);
+
+        // Get or create account
+        const secretKey = options.secret || '0x0000000000000000000000000000000000000000000000000000000000000001';
+        const accountManager = await getOrCreateAccount(pxeContext, secretKey);
+        const wallet = pxeContext.wallet;
+
+        // Register the contract
+        await wallet.registerContract({ artifact, instance: { address: contractAddress } as any });
+
+        // Get the contract interface
+        const contract = await Contract.at(contractAddress, artifact, wallet);
+
+        // Find the function
+        const fnAbi = artifact.functions.find((f: any) => f.name === fn);
+        if (!fnAbi) {
+          console.error(`Error: Function '${fn}' not found in artifact`);
+          console.error('Available functions: ' + artifact.functions.map((f: any) => f.name).join(', '));
+          process.exit(1);
+        }
+
+        // Parse arguments
+        const parsedArgs = args.map((arg, i) => {
+          if (arg.startsWith('0x')) {
+            if (arg.length === 66) {
+              return Fr.fromString(arg);
+            } else if (arg.length === 42) {
+              return AztecAddress.fromString(arg);
+            }
+            return arg;
+          }
+          if (/^\d+$/.test(arg)) {
+            return BigInt(arg);
+          }
+          return arg;
+        });
+
+        // Simulate the transaction
+        console.log(`Simulating: ${fn}(${args.join(', ')})`);
+        const result = await contract.methods[fn](...parsedArgs).simulate({ from: accountManager.address });
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify({
+            result: result?.toString?.() ?? result,
+            functionName: fn,
+            arguments: args,
+          }, null, 2));
+        } else {
+          console.log('Simulation Result:', result?.toString?.() ?? result);
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   contractCmd
@@ -1604,13 +1844,61 @@ function registerContractCommands(program: Command): void {
   registryCmd
     .command('upload')
     .description('Upload artifact to registry')
-    .argument('<artifact>', 'Artifact JSON file path')
-    .action(async function(this: Command, artifactPath: string) {
+    .argument('<artifact>', 'Artifact JSON file path or shortcut (e.g., aztec:Token)')
+    .option('--api-key <key>', 'API key for authentication (or set AZTEC_REGISTRY_API_KEY env var)')
+    .action(async function(this: Command, artifact: string, options: { apiKey?: string }) {
       const globalOpts = getGlobalOpts(this);
-      // Uploading requires authentication/signing which is not yet implemented
-      console.error('Error: Registry upload is not yet implemented.');
-      console.error('Hint: Artifacts are typically uploaded during contract deployment.');
-      process.exit(1);
+      try {
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const fetch = (await import('node-fetch')).default;
+
+        // Resolve API key
+        const apiKey = options.apiKey || process.env.AZTEC_REGISTRY_API_KEY;
+        if (!apiKey) {
+          console.error('Error: API key required for upload');
+          console.error('Set AZTEC_REGISTRY_API_KEY environment variable or use --api-key option');
+          process.exit(1);
+        }
+
+        // Resolve and load artifact
+        const artifactPath = ArtifactUtils.resolveArtifact(artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const artifactJson = JSON.parse(content);
+
+        // Upload to registry
+        const response = await fetch('https://devnet.aztec-registry.xyz/api/v1/artifacts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: content,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Registry returned ${response.status}: ${errorText}`);
+        }
+
+        const result = await response.json() as any;
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.log('Artifact uploaded successfully!');
+          console.log(`  Name: ${artifactJson.name || 'unknown'}`);
+          if (result.classId) {
+            console.log(`  Class ID: ${result.classId}`);
+          }
+          if (result.id) {
+            console.log(`  Registry ID: ${result.id}`);
+          }
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   registryCmd
@@ -1651,6 +1939,7 @@ function registerContractCommands(program: Command): void {
         process.exit(1);
       }
     });
+
 }
 
 // =============================================================================
@@ -1741,12 +2030,79 @@ function registerMonitorCommands(program: Command): void {
     .description('Watch note creation (requires PXE)')
     .argument('<contract>', 'Contract address')
     .option('--slot <slot>', 'Storage slot filter')
-    .action(async function(this: Command, contract: string, options: { slot?: string }) {
+    .option('--artifact <path>', 'Contract artifact')
+    .option('--secret <key>', 'Secret key for account')
+    .option('--interval <ms>', 'Polling interval in ms', '5000')
+    .action(async function(this: Command, contract: string, options: { slot?: string; artifact?: string; secret?: string; interval: string }) {
       const globalOpts = getGlobalOpts(this);
-      // Note monitoring requires PXE
-      console.error('Error: Note monitoring requires PXE connection (not yet implemented).');
-      console.error('Notes are private and not visible via public node RPC.');
-      process.exit(1);
+      try {
+        const { NoteUtils } = await import('../utils/note.js');
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+        const pollInterval = parseInt(options.interval, 10);
+
+        // Build params for note queries
+        const params: any = {
+          nodeUrl,
+          contractAddress: contract,
+          status: 'ACTIVE',
+        };
+
+        if (options.artifact) {
+          const artifactPath = ArtifactUtils.resolveArtifact(options.artifact);
+          const content = readFileSync(artifactPath, 'utf-8');
+          params.artifact = JSON.parse(content);
+        }
+
+        if (options.slot) {
+          if (options.slot.startsWith('0x')) {
+            params.storageSlot = options.slot;
+          } else {
+            params.storageSlotName = options.slot;
+          }
+        }
+
+        if (options.secret) {
+          params.secretKey = options.secret;
+        }
+
+        console.log(`Monitoring notes for ${contract.slice(0, 10)}... (Ctrl+C to stop)`);
+        console.log('');
+
+        let previousNoteCount = 0;
+
+        const poll = async () => {
+          try {
+            const result = await NoteUtils.fetchNotes(JSON.stringify(params));
+            const notes = result.notes || [];
+
+            if (notes.length !== previousNoteCount) {
+              if (globalOpts.json) {
+                console.log(JSON.stringify({ timestamp: new Date().toISOString(), notesCount: notes.length, newNotes: notes.length - previousNoteCount }));
+              } else {
+                console.log(`[${new Date().toISOString()}] Notes: ${notes.length} (${notes.length > previousNoteCount ? '+' : ''}${notes.length - previousNoteCount})`);
+              }
+              previousNoteCount = notes.length;
+            }
+          } catch {
+            // Silently continue on errors
+          }
+        };
+
+        await poll();
+        const interval = setInterval(poll, pollInterval);
+
+        process.on('SIGINT', () => {
+          clearInterval(interval);
+          console.log('\nStopped monitoring');
+          process.exit(0);
+        });
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   monitorCmd
@@ -1814,13 +2170,88 @@ function registerMonitorCommands(program: Command): void {
   monitorCmd
     .command('messages')
     .description('Watch L1<->L2 messages')
-    .option('--direction <dir>', 'l1-to-l2 or l2-to-l1')
-    .action(async function(this: Command, options: { direction?: string }) {
+    .option('--direction <dir>', 'l1-to-l2, l2-to-l1, or all', 'all')
+    .option('--l1-rpc-url <url>', 'L1 RPC URL')
+    .option('--interval <ms>', 'Polling interval in ms', '5000')
+    .action(async function(this: Command, options: { direction: string; l1RpcUrl?: string; interval: string }) {
       const globalOpts = getGlobalOpts(this);
-      // Message monitoring requires tracking both L1 and L2 state
-      console.error('Error: L1<->L2 message monitoring is not yet implemented.');
-      console.error('Hint: Use bridge status <hash> to check specific messages.');
-      process.exit(1);
+      try {
+        const { RpcClient } = await import('../utils/rpc.js');
+        const { getPendingL1ToL2Messages, getL2ToL1Messages } = await import('../utils/l1.js');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+        const rpcClient = new RpcClient({ rpcUrl: nodeUrl, adminUrl: nodeUrl, pretty: true });
+        const pollInterval = parseInt(options.interval, 10);
+
+        // Get L1 addresses from node
+        const l1Addresses = await rpcClient.call('node_getL1ContractAddresses', []);
+        if (!l1Addresses?.inboxAddress) {
+          throw new Error('Could not get L1 contract addresses from node');
+        }
+
+        const l1RpcUrl = options.l1RpcUrl || (globalOpts.sandbox ? 'http://localhost:8545' : undefined);
+        if (!l1RpcUrl) {
+          throw new Error('L1 RPC URL required. Use --l1-rpc-url or --sandbox for localhost:8545');
+        }
+
+        const ctx = {
+          l1RpcUrl,
+          l1Addresses: {
+            rollupAddress: l1Addresses.rollupAddress,
+            inboxAddress: l1Addresses.inboxAddress,
+            outboxAddress: l1Addresses.outboxAddress,
+            registryAddress: l1Addresses.registryAddress,
+          },
+        };
+
+        console.log(`Monitoring cross-chain messages (${options.direction}) (Ctrl+C to stop)`);
+        console.log('');
+
+        let lastL1ToL2Count = 0;
+        let lastL2ToL1Count = 0;
+
+        const poll = async () => {
+          try {
+            if (options.direction === 'all' || options.direction === 'l1-to-l2') {
+              const l1ToL2 = await getPendingL1ToL2Messages(ctx, {});
+              if (l1ToL2.length !== lastL1ToL2Count) {
+                if (globalOpts.json) {
+                  console.log(JSON.stringify({ direction: 'l1-to-l2', count: l1ToL2.length, delta: l1ToL2.length - lastL1ToL2Count, timestamp: new Date().toISOString() }));
+                } else {
+                  console.log(`[${new Date().toISOString()}] L1→L2: ${l1ToL2.length} messages (${l1ToL2.length > lastL1ToL2Count ? '+' : ''}${l1ToL2.length - lastL1ToL2Count})`);
+                }
+                lastL1ToL2Count = l1ToL2.length;
+              }
+            }
+
+            if (options.direction === 'all' || options.direction === 'l2-to-l1') {
+              const l2ToL1 = await getL2ToL1Messages(ctx, {});
+              if (l2ToL1.length !== lastL2ToL1Count) {
+                if (globalOpts.json) {
+                  console.log(JSON.stringify({ direction: 'l2-to-l1', count: l2ToL1.length, delta: l2ToL1.length - lastL2ToL1Count, timestamp: new Date().toISOString() }));
+                } else {
+                  console.log(`[${new Date().toISOString()}] L2→L1: ${l2ToL1.length} message roots (${l2ToL1.length > lastL2ToL1Count ? '+' : ''}${l2ToL1.length - lastL2ToL1Count})`);
+                }
+                lastL2ToL1Count = l2ToL1.length;
+              }
+            }
+          } catch {
+            // Silently continue on errors
+          }
+        };
+
+        await poll();
+        const interval = setInterval(poll, pollInterval);
+
+        process.on('SIGINT', () => {
+          clearInterval(interval);
+          console.log('\nStopped monitoring');
+          process.exit(0);
+        });
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   monitorCmd
@@ -1958,12 +2389,86 @@ function registerMonitorCommands(program: Command): void {
     .command('pending')
     .description('Watch pending transaction pool')
     .option('--from <address>', 'Filter by sender')
-    .action(async function(this: Command, options: { from?: string }) {
+    .option('--interval <ms>', 'Polling interval in ms', '2000')
+    .action(async function(this: Command, options: { from?: string; interval: string }) {
       const globalOpts = getGlobalOpts(this);
-      // Pending pool monitoring requires node subscription support
-      console.error('Error: Pending pool monitoring is not yet implemented.');
-      console.error('Hint: Use tx status <hash> to check specific transaction status.');
-      process.exit(1);
+      try {
+        const { RpcClient } = await import('../utils/rpc.js');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+        const rpcClient = new RpcClient({ rpcUrl: nodeUrl, adminUrl: nodeUrl, pretty: true });
+        const pollInterval = parseInt(options.interval, 10);
+
+        console.log('Monitoring pending transactions (Ctrl+C to stop)');
+        console.log('');
+
+        let lastPendingCount = 0;
+        let seenTxHashes = new Set<string>();
+
+        const poll = async () => {
+          try {
+            // Try to get pending txs - may not be supported by all nodes
+            const result = await rpcClient.call('node_getPendingTxs', []);
+            const pendingTxs = result || [];
+
+            // Filter by sender if specified
+            const filteredTxs = options.from
+              ? pendingTxs.filter((tx: any) => tx.origin?.toLowerCase() === options.from?.toLowerCase())
+              : pendingTxs;
+
+            // Find new transactions
+            const newTxs = filteredTxs.filter((tx: any) => {
+              const hash = tx.txHash || tx.hash;
+              if (hash && !seenTxHashes.has(hash)) {
+                seenTxHashes.add(hash);
+                return true;
+              }
+              return false;
+            });
+
+            if (newTxs.length > 0) {
+              for (const tx of newTxs) {
+                const hash = tx.txHash || tx.hash || 'unknown';
+                if (globalOpts.json) {
+                  console.log(JSON.stringify({
+                    txHash: hash,
+                    origin: tx.origin,
+                    timestamp: new Date().toISOString(),
+                  }));
+                } else {
+                  console.log(`[${new Date().toISOString()}] New pending: ${hash.slice(0, 18)}...`);
+                }
+              }
+            }
+
+            if (filteredTxs.length !== lastPendingCount) {
+              if (!globalOpts.json) {
+                console.log(`[${new Date().toISOString()}] Pending pool: ${filteredTxs.length} txs`);
+              }
+              lastPendingCount = filteredTxs.length;
+            }
+          } catch (error: any) {
+            // If method not supported, show message once
+            if (error.message?.includes('not found') || error.message?.includes('not supported')) {
+              console.error('Note: node_getPendingTxs not supported by this node');
+              console.error('Try monitoring new blocks instead: cazt monitor blocks');
+              process.exit(1);
+            }
+          }
+        };
+
+        await poll();
+        const interval = setInterval(poll, pollInterval);
+
+        process.on('SIGINT', () => {
+          clearInterval(interval);
+          console.log('\nStopped monitoring');
+          process.exit(0);
+        });
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 }
 
@@ -2016,13 +2521,80 @@ function registerQueryCommands(program: Command): void {
     .description('Query notes for address (requires PXE)')
     .argument('<address>', 'Owner address')
     .option('--contract <address>', 'Filter by contract')
+    .option('--artifact <path>', 'Contract artifact (required for note decoding)')
+    .option('--secret <key>', 'Secret key for account')
+    .option('--slot <slot>', 'Storage slot (name or hex)')
     .option('--status <status>', 'active or spent', 'active')
-    .action(async function(this: Command, address: string, options: { contract?: string; status: string }) {
+    .action(async function(this: Command, address: string, options: { contract?: string; artifact?: string; secret?: string; slot?: string; status: string }) {
       const globalOpts = getGlobalOpts(this);
-      // Notes are private and require PXE, not node RPC
-      console.error('Error: Querying notes requires a PXE connection. Notes are private and not accessible via public node RPC.');
-      console.error('Hint: Use a local PXE with --pxe-url option (not yet implemented).');
-      process.exit(1);
+      try {
+        const { NoteUtils } = await import('../utils/note.js');
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+
+        const nodeUrl = resolveNodeUrl(globalOpts);
+
+        // Build params for NoteUtils.fetchNotes
+        const params: any = {
+          nodeUrl,
+          sender: address,
+          status: options.status?.toUpperCase() || 'ACTIVE',
+        };
+
+        if (options.contract) {
+          params.contractAddress = options.contract;
+        }
+
+        if (options.secret) {
+          params.secretKey = options.secret;
+        }
+
+        if (options.artifact) {
+          const artifactPath = ArtifactUtils.resolveArtifact(options.artifact);
+          const content = readFileSync(artifactPath, 'utf-8');
+          params.artifact = JSON.parse(content);
+
+          if (!options.contract) {
+            console.error('Error: --contract is required when using --artifact');
+            process.exit(1);
+          }
+        }
+
+        if (options.slot) {
+          // Check if it's a name or hex value
+          if (options.slot.startsWith('0x')) {
+            params.storageSlot = options.slot;
+          } else {
+            params.storageSlotName = options.slot;
+          }
+        }
+
+        // Fetch notes
+        const result = await NoteUtils.fetchNotes(JSON.stringify(params));
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          const notes = result.notes || [];
+          console.log(`Notes for ${address.slice(0, 10)}... (${notes.length} found)`);
+          console.log('');
+
+          if (notes.length === 0) {
+            console.log('  No notes found');
+          } else {
+            for (const note of notes) {
+              console.log(`  Note:`);
+              console.log(`    Contract: ${note.contractAddress || 'unknown'}`);
+              console.log(`    Storage Slot: ${note.storageSlot || 'unknown'}`);
+              console.log(`    Content: ${JSON.stringify(note.content || note.note || {})}`);
+              console.log('');
+            }
+          }
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   queryCmd
@@ -3270,29 +3842,135 @@ function registerCastCommands(program: Command): void {
     .argument('<artifact>', 'Artifact path or name (e.g., aztec:Token)')
     .action(async function(this: Command, artifact: string) {
       const globalOpts = getGlobalOpts(this);
-      // Artifact hash requires loading and parsing - mark as not implemented for now
-      // as it requires contract class hashing which is complex
-      console.error('Error: Artifact hashing requires loading the full artifact. Use contract artifact info instead.');
-      process.exit(1);
+      try {
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const { computeArtifactHash } = await import('@aztec/stdlib/contract');
+
+        // Resolve and load artifact
+        const artifactPath = ArtifactUtils.resolveArtifact(artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const loaded = AbiUtils.loadContractArtifact(content);
+
+        // Compute hash
+        const hash = await computeArtifactHash(loaded);
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify({ hash: hash.toString() }));
+        } else {
+          console.log(hash.toString());
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
     });
 
   artifactCmd
     .command('hash-preimage')
     .description('Compute artifact hash preimage')
-    .argument('<artifact>', 'Artifact')
-    .action(notImplemented);
+    .argument('<artifact>', 'Artifact path or name (e.g., aztec:Token)')
+    .action(async function(this: Command, artifact: string) {
+      const globalOpts = getGlobalOpts(this);
+      try {
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const { computeArtifactHashPreimage } = await import('@aztec/stdlib/contract');
+
+        // Resolve and load artifact
+        const artifactPath = ArtifactUtils.resolveArtifact(artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const loaded = AbiUtils.loadContractArtifact(content);
+
+        // Compute preimage
+        const preimage = await computeArtifactHashPreimage(loaded);
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify({
+            privateFunctionRoot: preimage.privateFunctionRoot.toString(),
+            utilityFunctionRoot: preimage.utilityFunctionRoot.toString(),
+            metadataHash: preimage.metadataHash.toString(),
+          }));
+        } else {
+          console.log('Artifact Hash Preimage:');
+          console.log(`  Private Function Root: ${preimage.privateFunctionRoot.toString()}`);
+          console.log(`  Utility Function Root: ${preimage.utilityFunctionRoot.toString()}`);
+          console.log(`  Metadata Hash:         ${preimage.metadataHash.toString()}`);
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
+    });
 
   artifactCmd
     .command('metadata-hash')
     .description('Compute metadata hash')
-    .argument('<artifact>', 'Artifact')
-    .action(notImplemented);
+    .argument('<artifact>', 'Artifact path or name (e.g., aztec:Token)')
+    .action(async function(this: Command, artifact: string) {
+      const globalOpts = getGlobalOpts(this);
+      try {
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const { computeArtifactMetadataHash } = await import('@aztec/stdlib/contract');
+
+        // Resolve and load artifact
+        const artifactPath = ArtifactUtils.resolveArtifact(artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const loaded = AbiUtils.loadContractArtifact(content);
+
+        // Compute metadata hash
+        const hash = computeArtifactMetadataHash(loaded);
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify({ metadataHash: hash.toString() }));
+        } else {
+          console.log(hash.toString());
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
+    });
 
   artifactCmd
     .command('function-hash')
     .description('Compute function artifact hash')
-    .argument('<function>', 'Function artifact')
-    .action(notImplemented);
+    .argument('<artifact>', 'Artifact path or name (e.g., aztec:Token)')
+    .argument('<function>', 'Function name')
+    .action(async function(this: Command, artifact: string, functionName: string) {
+      const globalOpts = getGlobalOpts(this);
+      try {
+        const { ArtifactUtils } = await import('../utils/artifact.js');
+        const { readFileSync } = await import('fs');
+        const { computeFunctionArtifactHash } = await import('@aztec/stdlib/contract');
+
+        // Resolve and load artifact
+        const artifactPath = ArtifactUtils.resolveArtifact(artifact);
+        const content = readFileSync(artifactPath, 'utf-8');
+        const loaded = AbiUtils.loadContractArtifact(content);
+
+        // Find the function
+        const fn = loaded.functions.find((f: any) => f.name === functionName);
+        if (!fn) {
+          console.error(`Error: Function '${functionName}' not found in artifact`);
+          console.error('Available functions: ' + loaded.functions.map((f: any) => f.name).join(', '));
+          process.exit(1);
+        }
+
+        // Compute function hash
+        const hash = await computeFunctionArtifactHash(fn);
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify({ functionHash: hash.toString() }));
+        } else {
+          console.log(hash.toString());
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
+    });
 
   artifactCmd
     .command('load')

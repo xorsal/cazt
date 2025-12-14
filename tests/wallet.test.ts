@@ -290,15 +290,15 @@ describe('Wallet Commands', () => {
       const { stdout, exitCode } = runCli(['wallet', 'authwit', 'create', '--help']);
 
       expect(exitCode).toBe(0);
-      expect(stdout).toContain('intent');
+      expect(stdout).toContain('messageHash');
       expect(stdout).toContain('--secret');
     });
 
-    it('should error without implementation', () => {
-      const { stdout, exitCode } = runCli(['wallet', 'authwit', 'create', '{}', '--secret', TEST_SECRET]);
+    it('should error without --secret option', () => {
+      const { stdout, exitCode } = runCli(['wallet', 'authwit', 'create', '0x1234']);
 
       expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('not yet fully implemented');
+      expect(stdout.toLowerCase()).toContain('required');
     });
   });
 

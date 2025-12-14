@@ -1,6 +1,7 @@
 import { createAztecNodeClient, waitForNode } from '@aztec/aztec.js/node';
 import { Fr } from '@aztec/foundation/fields';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
+import { FunctionSelector, EventSelector } from '@aztec/stdlib/abi';
 import { getDefaultNodeUrl } from '../config/index.js';
 import { Helpers } from './helpers.js';
 import { RpcClient } from './rpc.js';
@@ -169,7 +170,7 @@ export class TxUtils {
 
     // Parse logs if requested and available
     if (showLogs && effectResult?.data) {
-      result.logs = TxUtils.parseLogs(effectResult.data, artifact);
+      result.logs = await TxUtils.parseLogs(effectResult.data, artifact);
       debugLog('Parsed logs:', result.logs);
     }
 
@@ -285,13 +286,42 @@ export class TxUtils {
       // Find by name
       matchedFunction = artifact.functions?.find((f: any) => f.name === functionName);
     } else {
-      // Find by selector
-      matchedFunction = artifact.functions?.find((f: any) => {
-        // Compute selector from function signature
-        const sig = `${f.name}(${(f.parameters || []).map((p: any) => p.type?.kind || 'field').join(',')})`;
-        // For now, just match by name since selector computation is complex
-        return false; // TODO: implement proper selector matching
-      });
+      // Find by selector - compare against computed selectors
+      const selectorHex = selector.toLowerCase();
+      for (const f of artifact.functions || []) {
+        try {
+          // Build parameter type string for selector computation
+          const paramTypes = (f.abi?.parameters || f.parameters || [])
+            .filter((p: any) => !p.name?.startsWith('inputs')) // Skip circuit inputs
+            .map((p: any) => {
+              const type = p.type;
+              if (!type) return 'field';
+              if (type.kind === 'field') return 'Field';
+              if (type.kind === 'boolean') return 'bool';
+              if (type.kind === 'integer') return type.sign === 'signed' ? `i${type.width}` : `u${type.width}`;
+              if (type.kind === 'struct') {
+                // Extract struct name from path
+                const path = type.path || '';
+                const parts = path.split('::');
+                return parts[parts.length - 1] || 'struct';
+              }
+              if (type.kind === 'array') return `[${type.type?.kind || 'field'};${type.length}]`;
+              return type.kind;
+            })
+            .join(',');
+
+          const sig = `${f.name}(${paramTypes})`;
+          const computedSelector = await FunctionSelector.fromSignature(sig);
+          const computedHex = computedSelector.toString().toLowerCase();
+
+          if (computedHex === selectorHex || computedHex.endsWith(selectorHex.slice(2))) {
+            matchedFunction = f;
+            break;
+          }
+        } catch {
+          // Skip functions that fail selector computation
+        }
+      }
     }
 
     if (!matchedFunction && functionName) {
@@ -407,8 +437,10 @@ export class TxUtils {
   /**
    * Parse logs from TxEffect data
    */
-  private static parseLogs(effectData: any, artifact: any): TxLogs {
-    const publicLogs: DecodedLog[] = (effectData.publicLogs || []).map((log: any) => {
+  private static async parseLogs(effectData: any, artifact: any): Promise<TxLogs> {
+    const publicLogs: DecodedLog[] = [];
+
+    for (const log of (effectData.publicLogs || [])) {
       const decodedLog: DecodedLog = {
         contractAddress: log.contractAddress?.toString?.() ?? log.contractAddress ?? 'unknown',
         fields: (log.fields || []).map((f: any) => f?.toString?.() ?? f),
@@ -417,13 +449,48 @@ export class TxUtils {
       // Try to decode event name if artifact is provided
       if (artifact && decodedLog.fields.length > 0) {
         // First field is often the event selector
-        const eventSelector = decodedLog.fields[0];
-        // TODO: match selector against artifact events
-        // For now, leave eventName undefined
+        const eventSelectorField = decodedLog.fields[0];
+
+        // Try to match against artifact events
+        if (artifact.events && Array.isArray(artifact.events)) {
+          for (const event of artifact.events) {
+            try {
+              // Build event signature from event definition
+              const paramTypes = (event.fields || [])
+                .map((f: any) => {
+                  const type = f.type;
+                  if (!type) return 'field';
+                  if (type.kind === 'field') return 'Field';
+                  if (type.kind === 'boolean') return 'bool';
+                  if (type.kind === 'integer') return type.sign === 'signed' ? `i${type.width}` : `u${type.width}`;
+                  if (type.kind === 'struct') {
+                    const path = type.path || '';
+                    const parts = path.split('::');
+                    return parts[parts.length - 1] || 'struct';
+                  }
+                  return type.kind;
+                })
+                .join(',');
+
+              const eventSig = `${event.name}(${paramTypes})`;
+              const computedSelector = await EventSelector.fromSignature(eventSig);
+              const computedHex = computedSelector.toString().toLowerCase();
+
+              // Compare selectors (handle with/without 0x prefix)
+              const fieldHex = eventSelectorField.toLowerCase();
+              if (fieldHex === computedHex || fieldHex.endsWith(computedHex.slice(2)) || computedHex.endsWith(fieldHex.slice(2))) {
+                decodedLog.eventName = event.name;
+                break;
+              }
+            } catch {
+              // Skip events that fail selector computation
+            }
+          }
+        }
       }
 
-      return decodedLog;
-    });
+      publicLogs.push(decodedLog);
+    }
 
     const privateLogs = (effectData.privateLogs || []).map((log: any) => ({
       encrypted: true as const,
@@ -472,14 +539,24 @@ export class TxUtils {
       const newValue = write.value?.toString?.() ?? write.value;
 
       // Query value at previous block
+      // Note: The slot in publicDataWrites is already a siloed slot (contract + storage slot combined)
+      // We can query the public data tree directly using this siloed slot
       let oldValue = '0';
       if (blockNumber > 0) {
         try {
-          // Note: This requires knowing the contract address for the slot
-          // For now, we show the raw slot without contract context
-          // TODO: Improve this to map slots back to contracts
-          oldValue = '0'; // Placeholder - would need contract address
+          // Query the previous block's state for this siloed slot
+          // The node RPC can query public data by siloed leaf slot
+          const prevBlockNumber = blockNumber - 1;
+          const result = await rpcClient.call('node_getPublicDataTreeLeafPreimage', [
+            prevBlockNumber,
+            slot,
+          ]);
+          if (result && result.value !== undefined) {
+            oldValue = result.value?.toString?.() ?? result.value ?? '0';
+          }
         } catch {
+          // If query fails, try alternative: check if value was zero before
+          // This is a best-effort approach
           oldValue = '0';
         }
       }

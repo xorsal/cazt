@@ -66,11 +66,11 @@ describe('Query Commands', () => {
       expect(stdout).toContain('--status');
     });
 
-    it('should error because notes require PXE', () => {
-      const { stdout, exitCode } = runCli(['query', 'notes', TEST_CONTRACT]);
+    it('should require address argument', () => {
+      const { stdout, exitCode } = runCli(['query', 'notes']);
 
       expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('pxe');
+      expect(stdout.toLowerCase()).toContain('address');
     });
   });
 

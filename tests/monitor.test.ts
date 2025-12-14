@@ -71,12 +71,7 @@ describe('Monitor Commands', () => {
       expect(exitCode).toBe(1);
     });
 
-    it('should error because requires PXE', () => {
-      const { stdout, exitCode } = runCli(['monitor', 'notes', TEST_ADDRESS]);
-
-      expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('pxe');
-    });
+    // Note: We don't test actual monitoring as it runs indefinitely and polls PXE
   });
 
   describe('monitor address', () => {
@@ -106,11 +101,11 @@ describe('Monitor Commands', () => {
       expect(stdout).toContain('--direction');
     });
 
-    it('should error because not implemented', () => {
+    it('should require L1 RPC URL', () => {
       const { stdout, exitCode } = runCli(['monitor', 'messages']);
 
       expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('not');
+      expect(stdout.toLowerCase()).toContain('l1 rpc');
     });
   });
 
@@ -156,12 +151,7 @@ describe('Monitor Commands', () => {
       expect(stdout).toContain('--from');
     });
 
-    it('should error because not implemented', () => {
-      const { stdout, exitCode } = runCli(['monitor', 'pending']);
-
-      expect(exitCode).toBe(1);
-      expect(stdout.toLowerCase()).toContain('not');
-    });
+    // Note: We don't test actual monitoring as it runs indefinitely and polls the node
   });
 
   describe('monitor command group', () => {
