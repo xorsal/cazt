@@ -378,6 +378,36 @@ function registerKeyCommands(program: Command): void {
       }
     });
 
+  // key from-passphrase
+  keyCmd
+    .command('from-passphrase')
+    .description('Derive secret key from passphrase (for testing)')
+    .argument('<passphrase>', 'Passphrase to derive key from')
+    .action(async function(this: Command, passphrase: string) {
+      const globalOpts = getGlobalOpts(this);
+      try {
+        const result = await WalletUtils.deriveKeyFromPassphrase(
+          JSON.stringify({ passphrase })
+        );
+
+        if (globalOpts.json) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          console.log('Secret Key from Passphrase');
+          console.log('══════════════════════════');
+          console.log(`Passphrase: ${result.passphrase}`);
+          console.log(`Secret Key: ${result.secretKey}`);
+          console.log(`Address:    ${result.address}`);
+          console.log('');
+          console.log('⚠️  WARNING: This uses simple hashing without key stretching.');
+          console.log('   NOT SECURE for production use - for testing only!');
+        }
+      } catch (error: any) {
+        console.error(`Error: ${error.message}`);
+        process.exit(1);
+      }
+    });
+
   // key derive-keys
   keyCmd
     .command('derive-keys')

@@ -1,5 +1,5 @@
 import { Fr, Fq, GrumpkinScalar, Point } from '@aztec/foundation/fields';
-import { Grumpkin, Schnorr, SchnorrSignature } from '@aztec/foundation/crypto';
+import { Grumpkin, Schnorr, SchnorrSignature, sha256 } from '@aztec/foundation/crypto';
 import { AztecAddress } from '@aztec/aztec.js/addresses';
 import { randomBytes } from '@aztec/foundation/crypto';
 import {
@@ -59,6 +59,13 @@ export interface VerifyResult {
   publicKey: string;
 }
 
+export interface PassphraseKey {
+  passphrase: string;
+  secretKey: string;
+  address: string;
+  warning: string;
+}
+
 /**
  * Wallet utility functions for key management
  */
@@ -75,6 +82,38 @@ export class WalletUtils {
     return {
       secretKey: secretKey.toString(),
       warning: 'SECURITY WARNING: Store this secret key securely. Anyone with access to it can control your account and funds.',
+    };
+  }
+
+  /**
+   * Derive secret key from a passphrase using SHA256
+   * WARNING: This is for testing only! Uses simple hashing without key stretching.
+   * @param params JSON with: passphrase
+   */
+  static async deriveKeyFromPassphrase(params: string): Promise<PassphraseKey> {
+    const p = JSON.parse(params);
+    const { passphrase } = p;
+
+    if (!passphrase) {
+      throw new Error('passphrase is required');
+    }
+
+    // Simple SHA256 hash of passphrase (for testing only - NOT SECURE)
+    const hash = sha256(Buffer.from(passphrase, 'utf-8'));
+    const secretKeyFr = Fr.fromBuffer(hash);
+    const secretKey = secretKeyFr.toString();
+
+    // Derive address using Schnorr account
+    const addressResult = await this.deriveAddress(JSON.stringify({
+      secretKey,
+      type: 'schnorr'
+    }));
+
+    return {
+      passphrase,
+      secretKey,
+      address: addressResult.address,
+      warning: 'Insecure derivation - for testing only',
     };
   }
 

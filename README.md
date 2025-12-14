@@ -133,6 +133,9 @@ cazt --sandbox query block number    # localhost:8080
 # Generate a new secret key
 cazt key generate
 
+# Derive key from passphrase (for testing only - NOT SECURE)
+cazt key from-passphrase "my passphrase"
+
 # Derive all master keys from secret
 cazt key derive-keys <secret>
 

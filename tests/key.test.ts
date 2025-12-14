@@ -161,6 +161,64 @@ describe('Key Commands', () => {
     });
   });
 
+  describe('key from-passphrase', () => {
+    it('should derive deterministic key from passphrase', () => {
+      const result1 = runCli(['--json', 'key', 'from-passphrase', 'test']);
+      const result2 = runCli(['--json', 'key', 'from-passphrase', 'test']);
+
+      expect(result1.exitCode).toBe(0);
+      expect(result2.exitCode).toBe(0);
+
+      const json1 = JSON.parse(result1.stdout);
+      const json2 = JSON.parse(result2.stdout);
+
+      // Same passphrase = same key
+      expect(json1.secretKey).toBe(json2.secretKey);
+      expect(json1.address).toBe(json2.address);
+    });
+
+    it('should produce different keys for different passphrases', () => {
+      const result1 = runCli(['--json', 'key', 'from-passphrase', 'alice']);
+      const result2 = runCli(['--json', 'key', 'from-passphrase', 'bob']);
+
+      expect(result1.exitCode).toBe(0);
+      expect(result2.exitCode).toBe(0);
+
+      const json1 = JSON.parse(result1.stdout);
+      const json2 = JSON.parse(result2.stdout);
+
+      expect(json1.secretKey).not.toBe(json2.secretKey);
+      expect(json1.address).not.toBe(json2.address);
+    });
+
+    it('should include warning in output', () => {
+      const { stdout, exitCode } = runCli(['key', 'from-passphrase', 'test']);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain('WARNING');
+      expect(stdout.toLowerCase()).toContain('not secure');
+    });
+
+    it('should output JSON with --json flag', () => {
+      const { stdout, exitCode } = runCli(['--json', 'key', 'from-passphrase', 'mypassphrase']);
+
+      expect(exitCode).toBe(0);
+      const json = JSON.parse(stdout);
+      expect(json.passphrase).toBe('mypassphrase');
+      expect(json.secretKey).toMatch(/^0x[0-9a-f]{64}$/i);
+      expect(json.address).toMatch(/^0x[0-9a-f]{64}$/i);
+      expect(json.warning).toBeTruthy();
+    });
+
+    it('should show help for from-passphrase', () => {
+      const { stdout, exitCode } = runCli(['key', 'from-passphrase', '--help']);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain('passphrase');
+      expect(stdout.toLowerCase()).toContain('testing');
+    });
+  });
+
   describe('key sign', () => {
     const TEST_MESSAGE = 'HelloAztec';
 
@@ -449,6 +507,7 @@ describe('Key Commands', () => {
 
       expect(exitCode).toBe(0);
       expect(stdout).toContain('generate');
+      expect(stdout).toContain('from-passphrase');
       expect(stdout).toContain('derive-keys');
       expect(stdout).toContain('derive-address');
       expect(stdout).toContain('sign');
