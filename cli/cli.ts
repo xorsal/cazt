@@ -251,6 +251,79 @@ txCmd.command('sim-public').description('Simulate public calls').requiredOption(
   console.log(client.formatOutput(result, !program.opts().noPretty));
 });
 
+txCmd
+  .command('status')
+  .description('Get transaction status')
+  .argument('<hash>', 'Transaction hash')
+  .option('--rpc-url <url>', 'Node URL (overrides global --rpc-url)')
+  .action(async (hash: string, options: { rpcUrl?: string }) => {
+    try {
+      const { TxUtils } = await import('./utils/tx.js');
+      const result = await TxUtils.getStatus(JSON.stringify({
+        hash,
+        nodeUrl: resolveRpcUrl(options.rpcUrl || program.opts().rpcUrl),
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Transaction Status');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Hash:   ${result.hash}`);
+        console.log(`Status: ${result.status}`);
+        if (result.blockNumber !== undefined) {
+          console.log(`Block:  ${result.blockNumber}`);
+        }
+      }
+    } catch (error: any) {
+      console.error(`Error getting tx status: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+txCmd
+  .command('wait')
+  .description('Wait for a transaction to be mined')
+  .argument('<hash>', 'Transaction hash')
+  .option('--timeout <ms>', 'Timeout in milliseconds', '60000')
+  .option('--rpc-url <url>', 'Node URL (overrides global --rpc-url)')
+  .action(async (hash: string, options: { timeout?: string; rpcUrl?: string }) => {
+    try {
+      const { TxUtils } = await import('./utils/tx.js');
+      const result = await TxUtils.waitForTx(JSON.stringify({
+        hash,
+        nodeUrl: resolveRpcUrl(options.rpcUrl || program.opts().rpcUrl),
+        timeout: parseInt(options.timeout || '60000', 10),
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Transaction Result');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Hash:   ${result.hash}`);
+        console.log(`Status: ${result.status}`);
+        if (result.blockNumber !== undefined) {
+          console.log(`Block:  ${result.blockNumber}`);
+        }
+
+        if (result.status === 'success') {
+          console.log('');
+          console.log('✓ Transaction mined successfully');
+        } else if (result.status === 'dropped' || result.status === 'reverted') {
+          console.log('');
+          console.log('✗ Transaction failed');
+          process.exit(1);
+        }
+      }
+    } catch (error: any) {
+      console.error(`Error waiting for tx: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
 // State commands
 const stateCmd = program.command('state').description('State queries');
 stateCmd.command('public-at').description('Get public storage at').requiredOption('--block <block>', 'Block').requiredOption('--contract <contract>', 'Contract address').requiredOption('--slot <slot>', 'Storage slot').action(async (options) => {
