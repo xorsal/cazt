@@ -5,6 +5,8 @@ import { TestWallet } from '@aztec/test-wallet/server';
 import { Contract } from '@aztec/aztec.js/contracts';
 import { loadContractArtifact } from '@aztec/stdlib/abi';
 import { getDefaultNodeUrl } from '../config/index.js';
+import { registerSponsoredFPC, getSponsoredPaymentMethod } from './fpc.js';
+import { Helpers } from './helpers.js';
 
 /**
  * Deployment utility functions
@@ -69,6 +71,12 @@ export class DeploymentUtils {
     });
     debugLog(`[DEBUG] Wallet created`);
 
+    // Register sponsored fee payment contract
+    debugLog(`[DEBUG] Registering SponsoredFPC...`);
+    await registerSponsoredFPC(wallet);
+    const paymentMethod = await getSponsoredPaymentMethod(wallet);
+    debugLog(`[DEBUG] SponsoredFPC registered`);
+
     // Create account if secret key is provided
     let accountManager: any = null;
     if (secretKey) {
@@ -78,13 +86,14 @@ export class DeploymentUtils {
           saltToUse = Fr.random();
           debugLog(`[DEBUG] Generated random account salt: ${saltToUse.toString()}`);
         } else {
-          saltToUse = Fr.fromString(salt);
+          saltToUse = Helpers.stringToFr(salt);
         }
       } else {
         saltToUse = Fr.ZERO;
       }
       debugLog(`[DEBUG] Creating account with secret key...`);
-      accountManager = await wallet.createSchnorrAccount(secretKey, saltToUse);
+      const secretKeyFr = Helpers.stringToFr(secretKey);
+      accountManager = await wallet.createSchnorrAccount(secretKeyFr, saltToUse);
       debugLog(`[DEBUG] Account created:`, { address: accountManager.address.toString() });
     }
 
@@ -96,7 +105,7 @@ export class DeploymentUtils {
         deployOptions.contractAddressSalt = Fr.random();
         debugLog(`[DEBUG] Generated random contract salt: ${deployOptions.contractAddressSalt.toString()}`);
       } else {
-        deployOptions.contractAddressSalt = Fr.fromString(contractAddressSalt);
+        deployOptions.contractAddressSalt = Helpers.stringToFr(contractAddressSalt);
       }
     }
 
@@ -156,9 +165,13 @@ export class DeploymentUtils {
       contractClassId: instance.currentContractClassId.toString(),
     });
 
-    // Send deployment transaction
+    // Send deployment transaction with sponsored fees
     debugLog(`[DEBUG] Sending deployment transaction...`);
-    const deployTx = deployMethod.send(deployOptions);
+    const sendOptions = {
+      ...deployOptions,
+      fee: { paymentMethod },
+    };
+    const deployTx = deployMethod.send(sendOptions);
     const txHash = await deployTx.getTxHash();
     debugLog(`[DEBUG] Deployment transaction sent:`, { txHash: txHash.toString() });
 
