@@ -933,6 +933,64 @@ contractCmd.command('get').description('Get contract').argument('<address>', 'Co
   console.log(client.formatOutput(result, !program.opts().noPretty));
 });
 
+contractCmd
+  .command('deploy')
+  .description('Deploy a contract to the network')
+  .requiredOption('--artifact <path>', 'Contract artifact (aztec:Name, standards:Name, or file path)')
+  .requiredOption('--secret <key>', 'Secret key for deployment account')
+  .option('--args <args>', 'Constructor arguments (JSON array)', '[]')
+  .option('--constructor <name>', 'Constructor function name (if multiple)')
+  .option('--salt <salt>', 'Account salt for address derivation')
+  .option('--contract-salt <salt>', 'Contract salt for address computation')
+  .option('--rpc-url <url>', 'Node URL (overrides global --rpc-url)')
+  .option('--no-wait', 'Don\'t wait for deployment to complete')
+  .option('--debug', 'Enable debug logging')
+  .action(async (options) => {
+    try {
+      const { DeploymentUtils } = await import('./utils/deployment.js');
+      const result = await DeploymentUtils.deployContract(JSON.stringify({
+        nodeUrl: resolveRpcUrl(options.rpcUrl || program.opts().rpcUrl),
+        artifact: options.artifact,
+        secretKey: options.secret,
+        constructorArgs: options.args,
+        constructorName: options.constructor,
+        salt: options.salt,
+        contractAddressSalt: options.contractSalt,
+        wait: options.wait !== false,
+        debug: options.debug || false,
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Contract Deployed');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Tx Hash:     ${result.txHash}`);
+        if (result.contract) {
+          console.log(`Address:     ${result.contract.address}`);
+          if (result.contract.instance) {
+            console.log(`Class ID:    ${result.contract.instance.contractClassId}`);
+            console.log(`Salt:        ${result.contract.instance.salt}`);
+          }
+        }
+        if (result.receipt) {
+          console.log(`Status:      ${result.receipt.status}`);
+          console.log(`Block:       ${result.receipt.blockNumber}`);
+        }
+        if (result.account) {
+          console.log(`Account:     ${result.account.address}`);
+        }
+      }
+    } catch (error: any) {
+      console.error(`Error deploying contract: ${error.message}`);
+      if (options.debug) {
+        console.error(error.stack);
+      }
+      process.exit(1);
+    }
+  });
+
 // Node commands
 const nodeCmd = program.command('node').description('Node info & fees');
 nodeCmd.command('ready').description('Check if node is ready').action(async () => {
