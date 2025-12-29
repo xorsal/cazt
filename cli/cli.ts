@@ -1665,6 +1665,65 @@ keyCmd
     }
   });
 
+keyCmd
+  .command('sign')
+  .description('Sign a message with Schnorr signature')
+  .argument('<secret>', 'Secret key (hex)')
+  .argument('<message>', 'Message to sign (text or 0x hex)')
+  .action(async (secret: string, message: string) => {
+    try {
+      const { WalletUtils } = await import('./utils/wallet.js');
+      const result = await WalletUtils.signMessage(JSON.stringify({
+        secretKey: secret,
+        message: message,
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Signature');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Public Key: ${result.publicKey}`);
+        console.log(`Signature:  ${result.signature}`);
+      }
+    } catch (error: any) {
+      console.error(`Error signing message: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+keyCmd
+  .command('verify')
+  .description('Verify a Schnorr signature')
+  .argument('<publicKey>', 'Public key (Point format)')
+  .argument('<message>', 'Original message (text or 0x hex)')
+  .argument('<signature>', 'Signature to verify (hex)')
+  .action(async (publicKey: string, message: string, signature: string) => {
+    try {
+      const { WalletUtils } = await import('./utils/wallet.js');
+      const result = await WalletUtils.verifySignature(JSON.stringify({
+        publicKey: publicKey,
+        message: message,
+        signature: signature,
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        if (result.valid) {
+          console.log('✓ Signature is valid');
+        } else {
+          console.log('✗ Signature is invalid');
+          process.exit(1);
+        }
+      }
+    } catch (error: any) {
+      console.error(`Error verifying signature: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
 // =============================================================================
 // WALLET COMMANDS
 // =============================================================================
