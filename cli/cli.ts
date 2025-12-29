@@ -1543,6 +1543,36 @@ program.command('compute-initialization-hash').alias('cih').description('Compute
   outputResult(result, program.opts().json);
 });
 
+// =============================================================================
+// KEY COMMANDS
+// =============================================================================
+
+const keyCmd = program.command('key').description('Key management commands');
+
+keyCmd
+  .command('generate')
+  .description('Generate a new random secret key')
+  .action(async () => {
+    try {
+      const { WalletUtils } = await import('./utils/wallet.js');
+      const result = await WalletUtils.generateKey('{}');
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Generated Secret Key');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Secret Key: ${result.secretKey}`);
+        console.log('');
+        console.log(`WARNING: ${result.warning}`);
+      }
+    } catch (error: any) {
+      console.error(`Error generating key: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
 // Helper function to read from stdin
 async function readStdin(): Promise<string> {
   const rl = readline.createInterface({
