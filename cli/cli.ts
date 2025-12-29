@@ -1631,6 +1631,40 @@ keyCmd
     }
   });
 
+keyCmd
+  .command('derive')
+  .description('Derive all keys and address from a secret key')
+  .argument('<secret>', 'Secret key (hex)')
+  .option('--salt <salt>', 'Salt for address derivation (default: 0)')
+  .action(async (secret: string, options: { salt?: string }) => {
+    try {
+      const { WalletUtils } = await import('./utils/wallet.js');
+      const result = await WalletUtils.deriveAllKeys(JSON.stringify({
+        secretKey: secret,
+        salt: options.salt,
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Derived Keys');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Address:  ${result.address}`);
+        console.log(`Salt:     ${result.salt}`);
+        console.log('');
+        console.log('Public Keys:');
+        console.log(`  Nullifier:        ${result.publicKeys.masterNullifierPublicKey.slice(0, 40)}...`);
+        console.log(`  Incoming Viewing: ${result.publicKeys.masterIncomingViewingPublicKey.slice(0, 40)}...`);
+        console.log(`  Outgoing Viewing: ${result.publicKeys.masterOutgoingViewingPublicKey.slice(0, 40)}...`);
+        console.log(`  Tagging:          ${result.publicKeys.masterTaggingPublicKey.slice(0, 40)}...`);
+      }
+    } catch (error: any) {
+      console.error(`Error deriving keys: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
 // =============================================================================
 // WALLET COMMANDS
 // =============================================================================
