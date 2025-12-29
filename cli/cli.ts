@@ -1573,6 +1573,71 @@ keyCmd
     }
   });
 
+// =============================================================================
+// WALLET COMMANDS
+// =============================================================================
+
+const walletCmd = program.command('wallet').description('Account wallet commands');
+
+walletCmd
+  .command('deploy')
+  .description('Deploy an account contract to the network')
+  .argument('<secret>', 'Secret key (hex)')
+  .option('--type <type>', 'Account type: schnorr, ecdsa-k, ecdsa-r', 'schnorr')
+  .option('--salt <salt>', 'Salt for address derivation (default: 0)')
+  .option('--rpc-url <url>', 'Node URL (overrides global --rpc-url)')
+  .action(async (secret: string, options: { type?: string; salt?: string; rpcUrl?: string }) => {
+    try {
+      const { AccountUtils } = await import('./utils/account.js');
+      const result = await AccountUtils.deployAccount(JSON.stringify({
+        secretKey: secret,
+        type: options.type,
+        salt: options.salt,
+        nodeUrl: resolveRpcUrl(options.rpcUrl || program.opts().rpcUrl),
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log(AccountUtils.formatDeployHumanReadable(result));
+      }
+    } catch (error: any) {
+      console.error(`Error deploying account: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+walletCmd
+  .command('address')
+  .description('Compute account address from secret key (without deploying)')
+  .argument('<secret>', 'Secret key (hex)')
+  .option('--type <type>', 'Account type: schnorr, ecdsa-k, ecdsa-r', 'schnorr')
+  .option('--salt <salt>', 'Salt for address derivation (default: 0)')
+  .action(async (secret: string, options: { type?: string; salt?: string }) => {
+    try {
+      const { AccountUtils } = await import('./utils/account.js');
+      const result = await AccountUtils.computeAddress(JSON.stringify({
+        secretKey: secret,
+        type: options.type,
+        salt: options.salt,
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Account Address');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Address: ${result.address}`);
+        console.log(`Type:    ${result.type}`);
+        console.log(`Salt:    ${result.salt}`);
+      }
+    } catch (error: any) {
+      console.error(`Error computing address: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
 // Helper function to read from stdin
 async function readStdin(): Promise<string> {
   const rl = readline.createInterface({
