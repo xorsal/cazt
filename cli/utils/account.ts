@@ -22,6 +22,24 @@ export interface AccountDeployResult {
 }
 
 /**
+ * Result type for account info
+ */
+export interface AccountInfoResult {
+  address: string;
+  deployed: boolean;
+  contractClassId?: string;
+  initializationHash?: string;
+  salt?: string;
+  deployer?: string;
+  publicKeys?: {
+    masterNullifierPublicKey: string;
+    masterIncomingViewingPublicKey: string;
+    masterOutgoingViewingPublicKey: string;
+    masterTaggingPublicKey: string;
+  };
+}
+
+/**
  * Account utility functions
  */
 export class AccountUtils {
@@ -107,6 +125,47 @@ export class AccountUtils {
       address: address.toString(),
       salt: salt.toString(),
       type,
+    };
+  }
+
+  /**
+   * Get account info from the network
+   * @param params JSON with: address, nodeUrl
+   */
+  static async getAccountInfo(params: string): Promise<AccountInfoResult> {
+    const p = JSON.parse(params);
+    const { address, nodeUrl = getDefaultNodeUrl() } = p;
+
+    if (!address) {
+      throw new Error('address is required');
+    }
+
+    const node = createAztecNodeClient(nodeUrl);
+    await waitForNode(node);
+
+    // Query the contract instance at the address
+    const contractInstance = await node.getContract(AztecAddress.fromString(address));
+
+    if (!contractInstance) {
+      return {
+        address,
+        deployed: false,
+      };
+    }
+
+    return {
+      address,
+      deployed: true,
+      contractClassId: contractInstance.currentContractClassId.toString(),
+      initializationHash: contractInstance.initializationHash.toString(),
+      salt: contractInstance.salt.toString(),
+      deployer: contractInstance.deployer.toString(),
+      publicKeys: contractInstance.publicKeys ? {
+        masterNullifierPublicKey: `${contractInstance.publicKeys.masterNullifierPublicKey.x.toString()},${contractInstance.publicKeys.masterNullifierPublicKey.y.toString()}`,
+        masterIncomingViewingPublicKey: `${contractInstance.publicKeys.masterIncomingViewingPublicKey.x.toString()},${contractInstance.publicKeys.masterIncomingViewingPublicKey.y.toString()}`,
+        masterOutgoingViewingPublicKey: `${contractInstance.publicKeys.masterOutgoingViewingPublicKey.x.toString()},${contractInstance.publicKeys.masterOutgoingViewingPublicKey.y.toString()}`,
+        masterTaggingPublicKey: `${contractInstance.publicKeys.masterTaggingPublicKey.x.toString()},${contractInstance.publicKeys.masterTaggingPublicKey.y.toString()}`,
+      } : undefined,
     };
   }
 

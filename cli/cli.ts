@@ -1862,6 +1862,52 @@ walletCmd
     }
   });
 
+walletCmd
+  .command('info')
+  .description('Get account info from the network')
+  .argument('<address>', 'Account address')
+  .option('--rpc-url <url>', 'Node URL (overrides global --rpc-url)')
+  .action(async (address: string, options: { rpcUrl?: string }) => {
+    try {
+      const { AccountUtils } = await import('./utils/account.js');
+      const result = await AccountUtils.getAccountInfo(JSON.stringify({
+        address: address,
+        nodeUrl: resolveRpcUrl(options.rpcUrl || program.opts().rpcUrl),
+      }));
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result, null, program.opts().noPretty ? 0 : 2));
+      } else {
+        console.log('Account Info');
+        console.log('='.repeat(50));
+        console.log('');
+        console.log(`Address:     ${result.address}`);
+        console.log(`Deployed:    ${result.deployed ? 'Yes' : 'No'}`);
+
+        if (result.deployed) {
+          console.log(`Class ID:    ${result.contractClassId}`);
+          console.log(`Salt:        ${result.salt}`);
+          console.log(`Deployer:    ${result.deployer}`);
+          if (result.publicKeys) {
+            console.log('');
+            console.log('Public Keys:');
+            console.log(`  Nullifier:        ${result.publicKeys.masterNullifierPublicKey.slice(0, 40)}...`);
+            console.log(`  Incoming Viewing: ${result.publicKeys.masterIncomingViewingPublicKey.slice(0, 40)}...`);
+            console.log(`  Outgoing Viewing: ${result.publicKeys.masterOutgoingViewingPublicKey.slice(0, 40)}...`);
+            console.log(`  Tagging:          ${result.publicKeys.masterTaggingPublicKey.slice(0, 40)}...`);
+          }
+        } else {
+          console.log('');
+          console.log('Note: Account contract not deployed yet.');
+          console.log('Use `cazt wallet deploy` to deploy.');
+        }
+      }
+    } catch (error: any) {
+      console.error(`Error getting account info: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
 // Helper function to read from stdin
 async function readStdin(): Promise<string> {
   const rl = readline.createInterface({
